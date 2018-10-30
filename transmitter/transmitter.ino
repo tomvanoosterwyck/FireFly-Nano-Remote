@@ -1,23 +1,34 @@
 #include <U8g2lib.h>
-#include <Wire.h>
-#include <SPI.h>
-#include <EEPROM.h>
-#include "RF24.h"
+#include <RH_RF69.h>
 
 // Uncomment DEBUG if you need to debug the remote
-// #define DEBUG
+//#define DEBUG
 
 #define VERSION 2.0
 
 #ifdef DEBUG
-	#define DEBUG_PRINT(x)  Serial.println (x)
-	#include "printf.h"
+	#define debug(x)  Serial.println (x)
+//	#include "printf.h"
 #else
-	#define DEBUG_PRINT(x)
+	#define debug(x)
 #endif
 
-// Defining the type of display used (128x32)
-U8G2_SSD1306_128X32_UNIVISION_1_HW_I2C u8g2(U8G2_R0, U8X8_PIN_NONE);
+/************ Radio Setup ***************/
+
+// Change to 915.0 or other frequency, must match RX's freq!
+#define RF69_FREQ 915.0
+
+// Feather M0 w/Radio
+#define RFM69_CS      8
+#define RFM69_INT     3
+#define RFM69_RST     4
+#define LED           13
+
+// Singleton instance of the radio driver
+RH_RF69 radio(RFM69_CS, RFM69_INT);
+
+// Defining the type of display used (128x64)
+U8G2_SSD1306_128X64_NONAME_F_HW_I2C u8g2(U8G2_R3, U8X8_PIN_NONE); 
 
 const unsigned char logo[] PROGMEM = { 
   0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x7e, 0x00, 0x80, 0x3c, 0x01,
@@ -43,6 +54,31 @@ const unsigned char noconnectionIcon[] PROGMEM = {
 	0x00, 0x09, 0x00, 0x06, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
 };
 
+// Button constants
+const int CLICK     = 1;
+const int DBL_CLICK = 2;
+const int HOLD      = 3;
+const int LONG_HOLD = 4;
+
+// Button timing variables
+int debounce = 20;          // ms debounce period to prevent flickering when pressing or releasing the button
+int DCgap = 250;            // max ms between clicks for a double click event
+int holdTime = 300;        // ms hold period: how long to wait for press+hold event
+int longHoldTime = 1500;    // ms long hold period: how long to wait for press+hold event
+
+// Button variables
+boolean buttonVal = HIGH;   // value read from button
+boolean buttonLast = HIGH;  // buffered value of the button's previous state
+boolean DCwaiting = false;  // whether we're waiting for a double click (down)
+boolean DConUp = false;     // whether to register a double click on next release, or whether to wait and click
+boolean singleOK = true;    // whether it's OK to do a single click
+long downTime = -1;         // time the button was pressed down
+long upTime = -1;           // time the button was released
+boolean ignoreUp = false;   // whether to ignore the button release because the click+hold was triggered
+boolean waitForUp = false;        // when held, whether to wait for the up event
+boolean holdEventPast = false;    // whether or not the hold event happened already
+boolean longHoldEventPast = false;// whether or not the long hold event happened already
+
 // Defining struct to handle callback data (auto ack)
 struct callback {
 	float ampHours;
@@ -57,6 +93,8 @@ struct package {		// | Normal 	| Setting 	| Dummy
 	uint16_t throttle;	// | Throttle 	| 			| 
 	uint8_t trigger;	// | Trigger 	| 			| 
 } remPackage;
+
+byte remPackageBuf[sizeof(remPackage)]; // = {0};
 
 // Define package to transmit settings
 struct settingPackage {
@@ -101,6 +139,8 @@ float gearRatio;
 float ratioRpmSpeed;
 float ratioPulseDistance;
 
+float signalStrength;
+
 uint8_t currentSetting = 0;
 const uint8_t numOfSettings = 14;
 
@@ -109,16 +149,16 @@ const short rules[numOfSettings][3] {
 	{0, 0, 1}, 		// 0: Killswitch 	| 1: Cruise control
 	{0, 0, 1}, 		// 0: Li-ion 		  | 1: LiPo
 	{10, 0, 12},	// Cell count
-	{14, 0, 250},	// Motor poles
-	{15, 0, 250},	// Motor pully
-	{40, 0, 250},	// Wheel pulley
-	{83, 0, 250},	// Wheel diameter
+	{22, 0, 250},	// Motor poles
+	{1, 0, 250},	// Motor pully
+	{1, 0, 250},	// Wheel pulley
+	{90, 0, 250},	// Wheel diameter
 	{1, 0, 2}, 		// 0: PPM only   | 1: PPM and UART | 2: UART only
-	{200, 0, 300},	// Min hall value
-	{500, 300, 700},	// Center hall value
-	{800, 700, 1023},	// Max hall value
+	{18, 0, 300},	// Min hall value
+	{325, 200, 600},	// Center hall value
+	{629, 600, 1023},	// Max hall value
 	{-1, 0, 0}, 	  // Address
-	{-1, 0, 0}, 	    // Set default address
+	{-1, 0   , 0}, 	    // Set default address
   {-1, 0, 0}
 };
 
@@ -141,22 +181,25 @@ const char settingUnits[3][3] = {"S", "T", "mm"};
 const char dataSuffix[3][4] = {"KMH", "KM", "%"};
 const char dataPrefix[3][9] = {"SPEED", "DISTANCE", "BATTERY"};
 
-// Pin defination
-const uint8_t triggerPin = 4;
-const uint8_t batteryMeasurePin = A2;
-const uint8_t hallSensorPin = A3;
-const uint8_t CE = 9;
-const uint8_t CS = 10;
+// 
+bool power = true;
 
-// Battery monitering
+// Pin defination
+const int buttonPin = 0;              // RX - pushbutton pin
+const uint8_t triggerPin = 10;
+const uint8_t batteryMeasurePin = A7; // Feather battery
+const uint8_t hallSensorPin = A5;
+const uint8_t vibroPin = 6;     
+
+// Battery monitoring
 const float minVoltage = 3.1;
 const float maxVoltage = 4.2;
-const float refVoltage = 5.0;
+const float refVoltage = 3.3; // Feather double-100K resistor divider
 
 // Defining variables for Hall Effect throttle.
 uint16_t hallValue, throttle;
-const uint16_t centerThrottle = 512;
-const uint8_t hallNoiseMargin = 10;
+const uint8_t hallNoiseMargin = 8;
+byte hallCenterMargin = 2;
 const uint8_t hallMenuMargin = 100;
 uint8_t throttlePosition; 
 
@@ -164,59 +207,56 @@ uint8_t throttlePosition;
 #define MIDDLE 1
 #define BOTTOM 2
 
-// Defining variables for NRF24 communication
-const uint64_t defaultAddress = 0xE8E8F0F0E1LL;
-const uint8_t defaultChannel = 108;
+// Defining variables for radio communication
 unsigned long lastTransmission;
 bool connected = false;
 short failCount;
 
 // Defining variables for OLED display
 String tString;
-uint8_t displayData = 0;
+//uint8_t displayData = 0;
 uint8_t x, y;
 unsigned long lastSignalBlink;
-unsigned long lastDataRotation;
 bool signalBlink = false;
+
+unsigned long lastScreenUpdate;
 
 // Defining variables for Settings menu
 bool changeSettings     = false; // Global flag for whether or not one is editing the settings
-bool changeThisSetting  = false;
-bool settingsLoopFlag   = false;
+//bool changeThisSetting  = false;
+//bool settingsLoopFlag   = false;
 bool triggerFlag = false;
 bool settingScrollFlag  = false;
 bool settingsChangeValueFlag = false;
-unsigned short settingWaitDelay = 500;
-unsigned short settingScrollWait = 800;
-unsigned long settingChangeMillis = 0;
-
-// Instantiating RF24 object for NRF24 communication
-RF24 radio(CE, CS);
+//unsigned short settingWaitDelay = 500;
+//unsigned short settingScrollWait = 800;
+//unsigned long settingChangeMillis = 0;
+uint8_t shutdownReq = 0;
 
 void setup() {
+    
+	Serial.begin(115200);
+  
+//  while (!Serial) {
+//    ; // wait for serial port to connect. Needed for native USB port only
+//  }
+  
+  debug("** Esk8-remote receiver **");
 
-	#ifdef DEBUG
-		Serial.begin(9600);
-    while (!Serial){};
-		printf_begin();
-	#endif
-
-	loadEEPROMSettings();
+  setDefaultEEPROMSettings();
+  calculateRatios();
 	
 	pinMode(triggerPin, INPUT_PULLUP);
+  pinMode(buttonPin, INPUT_PULLUP);
 	pinMode(hallSensorPin, INPUT);
 	pinMode(batteryMeasurePin, INPUT);
 
+  pinMode(LED, OUTPUT);
+  pinMode(vibroPin, OUTPUT);
+
   // Start OLED operations
 	u8g2.begin();
-	drawStartScreen();
-
-  // Enter settings on startup if trigger is hold down
-	if (triggerActive()) {
-		changeSettings = true;
-		drawTitleScreen("Settings");
-	}
-
+ 
 	// Start radio communication
 	initiateTransmitter();
 }
@@ -225,125 +265,73 @@ void loop() {
 
 	calculateThrottlePosition();
 
-	if (changeSettings == true) {
-		// Use throttle and trigger to change settings
-		controlSettingsMenu();
-	}
-	else
-	{
-		// Normal transmission. The state of the trigger, cruise and throttle is handled by the receiver. 
-		remPackage.type = 0;
-		remPackage.trigger = triggerActive();
-		remPackage.throttle = throttle;
-
-		// Transmit to receiver
-		transmitToReceiver();
-	}
-
-	// Call function to update display
-	updateMainDisplay();
+	// Normal transmission. The state of the trigger, cruise and throttle is handled by the receiver. 
+	remPackage.type = 0;
+  
+	remPackage.trigger = triggerActiveSafe();
+	remPackage.throttle = throttle;
+  
+  switch (checkButton()) {
+  case CLICK: 
+    // todo: menu
+    break;
+  case HOLD: // start shutdown
+    vibrate(100);
+    break;
+  case LONG_HOLD: // shutdown confirmed
+    sleep();
+    return;
+  }
+  
+  // Transmit to receiver
+  transmitToReceiver();
+  
+  // Call function to update display
+  updateMainDisplay();
 }
 
-/*
- * Uses the throttle and trigger to navigate and change settings
- */
-void controlSettingsMenu() {
+void isr() { } // Interrupt Service Routine
 
-	if (changeThisSetting == true) {
+void sleep() 
+{  
+  if (power == false) { return; }
+  
+  // turn off screen
+  u8g2.setPowerSave(1);  
+  power = false;
 
-    if(currentSetting == EXIT){
-      changeSettings = false;  
-    }
-    
-    if (settingsLoopFlag == false && rules[currentSetting][0] != -1){
-      short value = getSettingValue(currentSetting);
-			if ( throttlePosition == TOP ) {
-				value++;
-			}else if( throttlePosition == BOTTOM ) {
-				value--;
-			}
-			
-			if (inRange(value, rules[currentSetting][1], rules[currentSetting][2])) {
-				setSettingValue(currentSetting, value);
-        if(settingChangeMillis == 0){
-          settingChangeMillis = millis();
-        }
-			}
+  // interrupt
+  attachInterrupt (digitalPinToInterrupt(buttonPin), isr, LOW);  // attach interrupt handler
+  
+  // radio
+  radio.sleep();
 
-      if(settingScrollFlag == true){
-        settingsLoopFlag = false;
-        delay(20);
-      }else{
-        settingsLoopFlag = true;  
-      }
-    }
-    // If the throttle is at top or bottom for more than "settingScrollWait" allow the setting to change fast
-    if( millis() - settingChangeMillis >= settingScrollWait && settingChangeMillis != 0 ){
-      settingScrollFlag = true;
-      settingsLoopFlag = false;
-    }else{
-      settingScrollFlag = false;
-    }
-    
-	} else {
-    
-    if (settingsLoopFlag == false){
-			if (throttlePosition == TOP && currentSetting != 0) {
-				currentSetting--;
-				settingsLoopFlag = true;        
-			}else if(throttlePosition == BOTTOM && currentSetting < (numOfSettings - 1)) {
-				currentSetting++;
-				settingsLoopFlag = true;
-			}
-    }
-	}	
+  digitalWrite(LED, LOW);
 
-	// If thumbwheel is in middle position
-	if ( throttlePosition == MIDDLE ) {
-		settingsLoopFlag = false;
-    settingChangeMillis = 0;
-	}
+  USBDevice.standby();
+  
+  delay(200);
 
-	if ( triggerActive() ){ 
-    if (changeThisSetting == true && triggerFlag == false){
-    	// Settings that needs to be transmitted to the recevier
-    	if( currentSetting == TRIGGER || currentSetting == MODE ){
-    		if( ! transmitSetting( currentSetting, getSettingValue(currentSetting) ) ){
-    			// Error! Load the old setting
-    			loadEEPROMSettings();
-    		}
-    	}
-    	// If new address is choosen
-    	else if ( currentSetting == ADDRESS ){
-    		// Generate new address
-    		uint64_t address = generateAddress();
-    
-    		if( transmitSetting( currentSetting, address ) ){
-    			setSettingValue(currentSetting, address);
-    			initiateTransmitter();
-    		}else{
-    			// Error! Load the old address
-    			loadEEPROMSettings();
-    		}
-    	}
-    	// If we want to use the default address again
-    	else if ( currentSetting == RESET ){
-    		// Set the default address
-    		setSettingValue( ADDRESS, defaultAddress );
-    	}
-    
-    	updateEEPROMSettings();
-    }
+  // Set sleep mode to deep sleep 
+  SCB->SCR |= SCB_SCR_SLEEPDEEP_Msk;
+  
+  //Enter sleep mode and wait for interrupt (WFI)
+  __DSB();
+  __WFI();
 
-		if(triggerFlag == false){
-			changeThisSetting = !changeThisSetting;
-			triggerFlag = true;
-	  }
-	} 
-	else 
-	{
-		triggerFlag = false;
-	}
+  // After waking the code continues
+  // to execute from this point.
+  
+  detachInterrupt(digitalPinToInterrupt(buttonPin));
+
+  SCB->SCR &= ~SCB_SCR_SLEEPDEEP_Msk;
+
+  power = true;
+}
+
+
+bool pressed(int button) {
+  return digitalRead(button) == LOW;
 }
 
 /*
@@ -356,55 +344,8 @@ void setDefaultEEPROMSettings() {
 	}
 
   txSettings.firmVersion = VERSION;
-	txSettings.address = defaultAddress;
-	updateEEPROMSettings();
-}
-
-/*
- * Load saved settings from the EEPROM to the settings struct
- */
-void loadEEPROMSettings() {
-	// Load settings from EEPROM to custom struct
-	EEPROM.get(0, txSettings);
-
-	bool rewriteSettings = false;
-
-	// Loop through all settings to check if everything is fine
-	for (uint8_t i = 0; i < numOfSettings; i++) {	
-
-		// If setting default value is -1, don't check if its valid
-		if( rules[i][0] != -1 ){
-
-			short val = getSettingValue(i);
-		
-			if (! inRange(val, rules[i][1], rules[i][2])) {
-				// Setting is damaged or never written. Rewrite default.
-				rewriteSettings = true;
-				setSettingValue(i, rules[i][0] );
-			}
-		}
-	}
-
-	if(txSettings.firmVersion != VERSION){
-    
-    setDefaultEEPROMSettings();
-    
-  }
-  else if (rewriteSettings == true) {
-		updateEEPROMSettings();
-	}
-	
-	// Calculate constants
-	calculateRatios();
-
-}
-
-/* 
- * Write settings to the EEPROM then exiting settings menu.
- */
-void updateEEPROMSettings() {
-	EEPROM.put(0, txSettings);
-	calculateRatios();
+//	txSettings.address = defaultAddress;
+//	updateEEPROMSettings();
 }
 
 /*
@@ -482,151 +423,128 @@ bool triggerActive() {
 }
 
 /*
+ * Return true if trigger is activated with no/low throttle only
+ */
+bool triggerActiveSafe() {
+
+  bool active = triggerActive();
+  if (!active) return false;
+
+  // still on
+  if (remPackage.trigger) return true;
+    
+  // changed (off >> on)
+  if (throttle < 150) {
+    // low throttle
+    return true;
+  } else { 
+    // unsafe start
+    vibrate(60);
+    return false;
+  }
+}
+
+/*
  * Function used to transmit the remPackage and receive auto acknowledgement.
  */
 void transmitToReceiver(){
+
 	// Transmit once every 50 millisecond
 	if ( millis() - lastTransmission >= 50 ) {
 
 		lastTransmission = millis();
 
 		// Transmit the remPackage
-		if ( radio.write( &remPackage, sizeof(remPackage) ) )
+    byte sz=sizeof(remPackage);
+    memcpy (remPackageBuf, &remPackage, sz);
+    
+		if ( radio.send(remPackageBuf, sz  ))
 		{
+      radio.waitPacketSent();
+      digitalWrite(LED, HIGH);
 
 			// Listen for an acknowledgement reponse (return of uart data).
-			while (radio.isAckPayloadAvailable()) {
-				radio.read( &returnData, sizeof(returnData) );
-			}
+      if (radio.available()) { // Should be a message for us now  
 
-			// Transmission was a succes
-			failCount = 0;
+        uint8_t buf[sizeof(returnData)];
+        uint8_t len = sizeof(buf);
+        
+        if (radio.recv(buf, &len)) {
 
-			DEBUG_PRINT( uint64ToAddress(txSettings.address) + ": Transmission succes");
+          memcpy(&returnData, buf, sizeof(returnData));
+
+          digitalWrite(LED, LOW);
+
+          // Transmission was a success          
+          if (!connected) vibrate(200);  
+
+          connected = true;
+          failCount = 0;    
+
+          // signal
+          signalStrength = constrain(map(radio.lastRssi(), -77, -35, 0, 100), 0, 100);
+        }
+        
+      } else {
+        debug("No reply");        
+        failCount++;
+        signalStrength = 0;
+      }
+			
 		} else {
 			// Transmission was not a succes
 			failCount++;
 
-			DEBUG_PRINT( uint64ToAddress(txSettings.address) +  + ": Failed transmission");
-     
+			debug("Failed transmission");
 		}
 
 		// If lost more than 5 transmissions, we can assume that connection is lost.
-		if (failCount < 5) {
-			connected = true;
-		} else {
+		if (failCount > 5) {
+
+      if (connected) vibrate(200);
+      
 			connected = false;
+      
+//      debug("Disconnected");
 		}
 	}
 }
 
-
 /*
- * Transmit a specific setting to the receiver, so both devices has same configuration
- */
-bool transmitSetting(uint8_t setting, uint64_t value){
-  
-	uint64_t returnedValue;
-	unsigned long beginTime = millis(); 
-	bool payloadSend = false;
-	bool ackRecieved = false;
- 
-	// Lets clear the ack-buffer (so it can be used to confirm the new setting).
-	while ( radio.isAckPayloadAvailable() && settingWaitDelay >= ( millis() - beginTime) ) {
-		radio.read( &returnData, sizeof(returnData) );
-		delay(100);
-	}
-
-	// Feed the setPackage with the new setting
-	setPackage.setting = setting;
-	setPackage.value = value;
-
-	// Tell the receiver next package will be new settings
-	remPackage.type = 1;
-
-	beginTime = millis(); 
-  
-	while ( !payloadSend && settingWaitDelay >= (millis() - beginTime) ){
-		if( radio.write( &remPackage, sizeof(remPackage)) ){
-			payloadSend = true;
-		}
-	}
-
-	// ** Begin transmitting new setting **
-
-	if(payloadSend == true){
-
-		DEBUG_PRINT( F("TX --> New setting") );
-
-		// Transmit setPackage to receiver
-		beginTime = millis(); 
-
-		while ( !ackRecieved && settingWaitDelay >= ( millis() - beginTime) ){
-			// Write setPackage until an acknowledgement is received (or timeout is reached)
-			if( radio.write( &setPackage, sizeof(setPackage) ) ){
-
-				delay(100);
-
-				while( radio.isAckPayloadAvailable() && !ackRecieved ){
-					DEBUG_PRINT( F("TX <-- Acknowledgement") );
-					radio.read( &setPackage, sizeof(setPackage) );
-					ackRecieved = true;
-				}
-			}
-		}
-	}
-
-	// Check if the receiver Acknowledgement data is matching
-	if( ackRecieved && setPackage.setting == setting && setPackage.value == value ){
-
-    DEBUG_PRINT( F("Setting confirmed") );
-		payloadSend = false;
-
-    // Wait a little
-    delay(500);
-
-		// Send confirmation to the receiver
-		beginTime = millis(); 
-
-		while ( !payloadSend && settingWaitDelay >= (millis() - beginTime) ){
-
-			remPackage.type = 2;
-
-			if(radio.write( &remPackage, sizeof(remPackage))){
-				payloadSend = true;
-				DEBUG_PRINT( F("TX --> Confirmation") );
-			}
-
-			delay(100);
-		}
-
-		if( payloadSend == true) {
-			// Success
-			DEBUG_PRINT( F("Setting done") );
-			return true;
-		}
-	}
-
-	return false;
-
-}
-
-/*
- * Initiate the nRF24 module, needed to reinitiate the nRF24 after address change
+ * Initiate the radio module
  */
 void initiateTransmitter(){
 
-	radio.begin();
-	radio.setChannel(defaultChannel);
-	radio.setPALevel(RF24_PA_MAX);
-	radio.enableAckPayload();
-	radio.enableDynamicPayloads();
-	radio.openWritingPipe( txSettings.address );
+  pinMode(RFM69_RST, OUTPUT);
+  digitalWrite(RFM69_RST, LOW);
+  
+  // manual reset
+  digitalWrite(RFM69_RST, HIGH);
+  delay(10);
+  digitalWrite(RFM69_RST, LOW);
+  delay(10);
+  
+if (!radio.init()) {
+    debug("RFM69 radio init failed");
+    while (1);
+  }
+  
+  // Defaults after init are 434.0MHz, modulation GFSK_Rb250Fd250, +13dbM (for low power module)
+  // No encryption
+  if (!radio.setFrequency(RF69_FREQ)) {
+    debug("setFrequency failed");
+  }
 
-	#ifdef DEBUG
-	  radio.printDetails();
-	#endif
+  // If you are using a high power RF69 eg RFM69HW, you *must* set a Tx power with the
+  // ishighpowermodule flag set like this:
+  radio.setTxPower(20, true);  // range from 14-20 for power, 2nd arg must be true for 69HCW
 
+  // The encryption key has to be the same as the one in the receiver
+  uint8_t key[] = { 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
+                    0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08};
+  radio.setEncryptionKey(key);
+  
+  debug(String(RF69_FREQ) + " Mhz");  
 }
 
 /*
@@ -635,22 +553,52 @@ void initiateTransmitter(){
  */
 void updateMainDisplay()
 {
-	u8g2.firstPage();
+  if (power == false) return;
+  
+  u8g2.setPowerSave(0); // check?
+	
  
-	do {
-		if ( changeSettings == true )
+		if ( changeSettings == false )
 		{
-			drawSettingsMenu();
-		}
-		else
-		{
-			drawThrottle();
-			drawPage();
-			drawBatteryLevel();
-			drawSignal();
-		}
-	} while ( u8g2.nextPage() );
+      if (isShuttingDown()) {
+    
+        drawShutdownScreen(); 
+      
+      } else if (connected) {
+
+        // 1s update
+
+        if (millis() - lastScreenUpdate > 500) {
+          u8g2.clearBuffer();
+
+          drawPage();
+          drawBatteryLevel();
+          drawSignal();    
+          
+          //drawThrottle();
+      
+          lastScreenUpdate = millis();
+        }
+
+        u8g2.sendBuffer();
+        
+        
+      } else {
+        
+        u8g2.firstPage();
+        do {
+          drawThrottle();
+          drawConnectingScreen();
+
+        } while ( u8g2.nextPage() );
+        
+      }
+      
+		} else {
+      // drawSettingsMenu();
+    }
 }
+
 
 /*
  * Measure the hall sensor output and calculate throttle posistion
@@ -668,35 +616,30 @@ void calculateThrottlePosition()
 
 	hallValue = total / samples;
 	
-	if ( hallValue >= txSettings.centerHallValue )
-	{
-		throttle = constrain( map(hallValue, txSettings.centerHallValue, txSettings.maxHallValue, centerThrottle, 1023), centerThrottle, 1023 );
-	} else {
-		throttle = constrain( map(hallValue, txSettings.minHallValue, txSettings.centerHallValue, 0, centerThrottle), 0, centerThrottle );
-	}
+	debug(hallValue);
 
-	// Remove hall center noise
-	if ( abs(throttle - centerThrottle) < hallNoiseMargin )
-	{
-		throttle = centerThrottle;
-	}
+  if (hallValue >= txSettings.centerHallValue + hallNoiseMargin) {
+    throttle = constrain(map(hallValue, txSettings.centerHallValue + hallNoiseMargin, txSettings.maxHallValue, 127, 255), 127, 255);
+  } 
+  else if (hallValue <= txSettings.centerHallValue - hallNoiseMargin) {
+    throttle = constrain(map(hallValue, txSettings.minHallValue, txSettings.centerHallValue - hallNoiseMargin, 0, 127), 0, 127);
+  }
+  else {
+    // Default value if stick is in deadzone
+    throttle = 127;
+  }
 
-	// Find the throttle positions
-	if (throttle >= (centerThrottle + hallMenuMargin)) {
-		throttlePosition = TOP;
-	}
-	else if (throttle <= (centerThrottle - hallMenuMargin)) {
-		throttlePosition = BOTTOM;
-	}
-	else if ( inRange( throttle, (centerThrottle - hallMenuMargin), (centerThrottle + hallMenuMargin) ) ) {
-		throttlePosition = MIDDLE;
-	}
+  // removeing center noise
+  if (abs(throttle - 127) < hallCenterMargin) {
+    throttle = 127;
+  }
+
 }
 
 /* 
- * Calculate the remotes battery level
+ * Calculate the remotes battery voltage
  */ 
-uint8_t batteryLevel() {
+float batteryLevelVolt() {
 
   uint16_t total = 0;
   uint8_t samples = 5;
@@ -705,16 +648,25 @@ uint8_t batteryLevel() {
     total += analogRead(batteryMeasurePin);
   }
 
-	float voltage = (refVoltage / 1024.0) * ( (float)total / (float)samples );
-
-	if (voltage <= minVoltage) {
-		return 0;
-	} else if (voltage >= maxVoltage) {
-		return 100;
-	} 
-	
-	return (voltage - minVoltage) * 100 / (maxVoltage - minVoltage);
+  return ( (float)total / (float)samples ) * 2 * refVoltage / 1024.0;
 }
+  
+/* 
+ * Calculate the remotes battery level
+ */ 
+float batteryLevel() {
+
+  float voltage = batteryLevelVolt();
+  
+  if (voltage <= minVoltage) {
+    return 0;
+  } else if (voltage >= maxVoltage) {
+    return 100;
+  } 
+  
+  return (voltage - minVoltage) * 100 / (maxVoltage - minVoltage);
+}
+
 
 /*
  * Calculate the battery level of the board based on the telemetry voltage
@@ -743,226 +695,228 @@ float batteryPackPercentage( float voltage ){
 	}
 	
 	return percentage;
-	
 }
 
-/*
- * Prints the settings menu on the OLED display
- */
-void drawSettingsMenu() {
-	// Local variables to store the setting value and unit
-	uint64_t value;
 
-	x = 0;
-	y = 10;
-	
-	// Print setting title
-	u8g2.setFont(u8g2_font_profont12_tr);
-	u8g2.drawStr(x, y, titles[ currentSetting ] );
+void drawShutdownScreen() 
+{
+  u8g2.firstPage();
+  do {      
+    drawString("Turning off...", -1, 60, u8g2_font_crox1h_tf);
+  
+    // shrinking line
+    long ms_left = longHoldTime - (millis() - downTime);
+    int w = map(ms_left, 0, longHoldTime - holdTime, 0, 32);
+    u8g2.drawHLine(32 - w, 70, w * 2); // top line
 
-	// Get current setting value
-	switch(currentSetting){
-		case ADDRESS:
-			value = txSettings.address;
-		break;
+  } while ( u8g2.nextPage() );
+}
 
-		case RESET:
-			value = defaultAddress;
-		break;
+void drawConnectingScreen() 
+{     
+    int y = 8;
+    
+    u8g2.drawXBMP((64-24)/2, y, 24, 24, logo);
+  
+  
+    drawString("Firefly Nano", -1, y + 42, u8g2_font_crox1h_tf);
+ 
+    drawString(String(RF69_FREQ, 0) + " Mhz", -1, y + 42 + 14, u8g2_font_blipfest_07_tr);
+  
+    // remote battery
+    //drawString(String(batteryLevel(), 0) + " - " + String(throttle), -1, y + 42 + 28, u8g2_font_blipfest_07_tr);
+  
+    drawString(String(hallValue) + " - " + String(throttle) + " - " + String(batteryLevel(), 0), -1, y + 42 + 28, u8g2_font_blipfest_07_tr);
+  
+  
+    if (millis() - lastSignalBlink > 500) {
+      signalBlink = !signalBlink;
+      lastSignalBlink = millis();
+    }
+    y = 88;
+    if (signalBlink == true) {
+      u8g2.drawXBMP((64-12)/2, y, 12, 12, connectedIcon);
+    } else {
+      u8g2.drawXBMP((64-12)/2, y, 12, 12, noconnectionIcon);
+    }
+  
+    drawString("CONNECTING...", -1, 116, u8g2_font_blipfest_07_tr); 
+  
+}
 
-		default:
-			value = getSettingValue(currentSetting);
-		break;
-	}
+void drawThrottle() {
 
-	// Check if there is a text string for the setting value
-	if( valueIdentifier[currentSetting] != 0 )
-	{
-		uint8_t index = valueIdentifier[ currentSetting ] - 1;
-		tString = stringValues[ index ][ value ]; 
-	}
-	else
-	{
-		if(currentSetting == ADDRESS || currentSetting == RESET){
-			tString = uint64ToAddress(value);
-		}else{
-			tString = uint64ToString(value);
-		}
-	}
-
-	if( unitIdentifier[ currentSetting ] != 0 ){
-		tString += settingUnits[ unitIdentifier[ currentSetting ] - 1 ];
-	}
-
-  if( currentSetting == EXIT ){
-    tString = F("Exit");  
+  if (throttle > 127) {
+    // right side - throttle
+    int h = map(throttle - 127, 0, 127, 0, 128);
+    u8g2.drawVLine(63, 128-h, h); // nose    
   }
 
-	if ( changeThisSetting == true )
-	{
-		drawString(tString, tString.length(), x + 10, y + 20, u8g2_font_10x20_tr );
-
-    // If setting has something to do with the hallValue
-		if( inRange(currentSetting, 8, 10) ){
-			tString = "(" + String(hallValue) + ")";
-			drawString(tString, tString.length(), x + 92, y + 20, u8g2_font_profont12_tr );
-		}
-	}
-	else
-	{
-		drawString(tString, tString.length(), x, y + 20, u8g2_font_10x20_tr );
-	}
-}
-
-/*
- * Print the startup screen 
- */
-void drawStartScreen() {
-	u8g2.firstPage();
- 
-	do {
-    
-		u8g2.drawXBMP( 4, 4, 24, 24, logo);
-
-    u8g2.setFont(u8g2_font_10x20_tr);
-    u8g2.drawStr(35, 21, "Firefly");
-
-	} while ( u8g2.nextPage() );
-
-  delay(1500);
-}
-
-/*
- * Print a title on the OLED display
- */
-void drawTitleScreen(String title) {
-	u8g2.firstPage();
- 
-	do {
-
-		drawString(title, 20, 12, 20, u8g2_font_10x20_tr );
-
-	} while ( u8g2.nextPage() );
-
-	delay(1500);
+  if (throttle < 127) {
+    // left side - brake
+    int h = map(throttle, 0, 127, 128, 0);
+    u8g2.drawVLine(0, 0, h); // nose    
+  }  
 }
 
 /*
  * Print the main page: Throttle, battery level and telemetry
  */
 void drawPage() {
-	uint8_t decimals;
-	float value;
 
-	uint16_t first, last;
+  uint8_t decimals;
+  float value;
+  uint16_t first, last;
 
-	x = 0;
-	y = 16;
-
-	// Rotate the realtime data each 4s.
-	if ((millis() - lastDataRotation) >= 4000) {
-
-		lastDataRotation = millis();
-		displayData++;
-
-		if (displayData > 2) {
-			displayData = 0;
-		}
-	}
-
-	switch (displayData) {
-		case 0:
-			value = ratioRpmSpeed * returnData.rpm;
-			decimals = 1;
-		  break;
-		case 1:
-			value = ratioPulseDistance * returnData.tachometerAbs;
-			decimals = 2;
-		  break;
-		case 2:
-			value = batteryPackPercentage( returnData.inpVoltage );
-			decimals = 1;
-		  break;
-	}
-
-	// Display prefix (title)
-	u8g2.setFont(u8g2_font_profont12_tr);
-	u8g2.drawStr(x, y-1, dataPrefix[ displayData ] );
-
-	// Split up the float value: a number, b decimals.
-	first = abs( floor(value) );
-	last = (value-first) * pow(10,decimals);
-
-	// Add leading zero
-	if ( first <= 9 ) {
-		tString = "0" + String(first);
-	} else {
-		tString = first;
-	}
-
-	// Display numbers
-	drawString(tString, 10, x + 55, y + 13, u8g2_font_logisoso22_tn );
-
-	// Display decimals
-	tString = ".";
-  if ( last <= 9 && decimals > 1) {
-    tString += "0";
-  } 
+  String s;
   
-	tString += last;
-	drawString(tString, decimals + 2, x + 86, y - 1, u8g2_font_profont12_tr);
+  uint8_t offset = 38;
+  x = 0;
+  y = 37;
+  uint8_t width;
 
-	// Display suffix
-	u8g2.setFont(u8g2_font_profont12_tr);
-	u8g2.drawStr(x + 88, y + 13, dataSuffix[ displayData ] );
+//  u8g2.drawFrame(0,0,64,128);
+  
+  // --- Speed ---
+  value = ratioRpmSpeed * abs(returnData.rpm);
+  float speedMax = 30.0;
+
+  drawStringCenter(String(value, 0), "km/h", y);
+
+  y = 48;
+  // speedometer graph height array
+  uint8_t a[16] = {3, 3, 4, 4, 5, 6, 7, 8, 10, 
+    11, 13, 15, 17, 20, 24, 28};
+  uint8_t h;
+  
+  for (uint8_t i = 0; i < 16; i++) {
+    h = a[i];
+    if (speedMax / 16 * i <= value) {
+      u8g2.drawVLine(x + i*4 + 2, y - h, h);
+    } else {
+      u8g2.drawPixel(x + i*4 + 2, y - h);
+      u8g2.drawPixel(x + i*4 + 2, y - 1);
+    }
+  }
+  
+  // --- Battery ---
+  value = batteryPackPercentage( returnData.inpVoltage );
+
+  y = 73;
+  
+  int battery = (int) value;
+  drawStringCenter(String(battery), "%", y);
+
+  drawString(String(returnData.inpVoltage, 1), 50, 73, u8g2_font_blipfest_07_tr);
+
+  y = 78;
+  x = 1;
+
+  // longboard body
+  h = 12;
+  uint8_t w = 41;
+  u8g2.drawHLine(x + 10, y, w); // top line
+  u8g2.drawHLine(x + 10, y + h, w); // bottom
+
+  // nose
+  u8g2.drawHLine(x + 2, y + 3, 5); // top line
+  u8g2.drawHLine(x + 2, y + h - 3, 5); // bottom
+  
+  u8g2.drawPixel(x + 1, y + 4); 
+  u8g2.drawVLine(x, y + 5, 3); // nose
+  u8g2.drawPixel(x + 1, y + h - 4); 
+
+  u8g2.drawLine(x + 6, y + 3, x + 9, y);          // / 
+  u8g2.drawLine(x + 6, y + h - 3, x + 9, y + h);  // \
+
+  // tail
+  u8g2.drawHLine(64 - 6 - 2, y + 3, 5); // top line
+  u8g2.drawHLine(64 - 6 - 2, y + h - 3, 5); // bottom
+
+  u8g2.drawPixel(64 - 3, y + 4); 
+  u8g2.drawVLine(64 - 2, y + 5, 3); // tail
+  u8g2.drawPixel(64 - 3, y + h - 4); 
+
+  u8g2.drawLine(64 - 6 - 3, y + 3, 64 - 6 - 6, y);          // / 
+  u8g2.drawLine(64 - 6 - 3, y + h - 3, 64 - 6 - 6, y + h);  // \
+ 
+  // longboard wheels
+  u8g2.drawBox(x + 3, y, 3, 2); // left
+  u8g2.drawBox(x + 3, y + h - 1, 3, 2);
+  u8g2.drawBox(64 - 7, y, 3, 2); // right
+  u8g2.drawBox(64 - 7, y + h - 1, 3, 2);
+  
+  // battery sections
+  for (uint8_t i = 0; i < 14; i++) {
+    if (round((100 / 14) * i) <= value) {
+      u8g2.drawBox(x + i*3 + 10, y + 2, 1, h - 3);
+    }
+  }
+
+  // --- Distance in km ---
+  value = ratioPulseDistance * returnData.tachometerAbs;
+  String km;
+
+  y = 118;
+
+  if (value >= 1) {
+    km = String(value, 0);  
+    drawStringCenter(String(km), "km", y);
+  } else {
+    km = String(value * 1000, 0);
+    drawStringCenter(String(km), "m", y);
+  }
+
+  // max distance
+  int range = 30;
+  if (value > range) range = value;
+  
+  drawString(String(range), 56, 118, u8g2_font_blipfest_07_tr); // u8g2_font_prospero_bold_nbp_tn
+
+  // dots
+  y = 122;
+  for (uint8_t i = 0; i < 16; i++) {
+    u8g2.drawBox(x + i * 4, y + 4, 2, 2);
+  }
+
+  // start end
+  u8g2.drawBox(x, y, 2, 6);
+  u8g2.drawBox(62, y, 2, 6);
+  u8g2.drawBox(30, y, 2, 6);
+
+  // position
+  u8g2.drawBox(x, y + 2, value / range * 62, 4);
+}
+ 
+void drawStringCenter(String value, String caption, uint8_t y){
+
+  static char cache[10];
+
+  // draw digits
+  int x = 0;
+  value.toCharArray(cache, value.length() + 1);
+  u8g2.setFont(u8g2_font_ncenB18_tn); //u8g2_font_t0_18b_tr);
+  u8g2.drawStr(x, y, cache);
+
+  // draw caption km/%
+  x += u8g2.getStrWidth(cache) + 4;
+  y -= 9;
+  caption.toCharArray(cache, caption.length() + 1);
+  u8g2.setFont(u8g2_font_crox1h_tf);
+  u8g2.drawStr(x, y, cache);
 }
 
-/*
- * Prepare a string to be displayed on the OLED 
- */
-void drawString(String string, uint8_t lenght, uint8_t x, uint8_t y, const uint8_t *font){
+void drawString(String string, int x, int y, const uint8_t *font){
 
-	static char cache[20];
+  static char cache[20];
+  string.toCharArray(cache, string.length() + 1);
+  u8g2.setFont(font); 
 
-	string.toCharArray(cache, lenght + 1);
+  if (x == -1) {
+    x = (64 - u8g2.getStrWidth(cache)) / 2;
+  }
 
-	u8g2.setFont(font);
-	u8g2.drawStr(x, y, cache);
-
-}
-
-/*
- * Print the throttle value as a bar on the OLED
- */
-void drawThrottle() {
-	
-	x = 0;
-	y = 18;
-
-	uint8_t width;
-  
-	// Draw throttle
-	u8g2.drawHLine(x, y, 52);
-	u8g2.drawVLine(x, y, 10);
-	u8g2.drawVLine(x + 52, y, 10);
-	u8g2.drawHLine(x, y + 10, 5);
-	u8g2.drawHLine(x + 52 - 4, y + 10, 5);
-
-	if (throttle >= 512) {
-		width = map(throttle, 512, 1023, 0, 49);
-
-		for (uint8_t i = 0; i < width; i++)
-		{
-			u8g2.drawVLine(x + i + 2, y + 2, 7);
-		}
-	} else {
-		width = map(throttle, 0, 511, 49, 0);
-   
-		for (uint8_t i = 0; i < width; i++)
-		{
-			u8g2.drawVLine(x + 50 - i, y + 2, 7);
-		}
-	}
+  u8g2.drawStr(x, y, cache);
 }
 
 /*
@@ -970,27 +924,13 @@ void drawThrottle() {
  */
 void drawSignal() {
 
-	x = 114;
-	y = 17;
+  x = 45; 
+  y = 11;
 
-	if (connected == true) {
-		if (triggerActive()) {
-			u8g2.drawXBMP(x, y, 12, 12, transmittingIcon);
-		} else {
-			u8g2.drawXBMP(x, y, 12, 12, connectedIcon);
-		}
-	} else {
-		if (millis() - lastSignalBlink > 500) {
-			signalBlink = !signalBlink;
-			lastSignalBlink = millis();
-		}
-
-		if (signalBlink == true) {
-			u8g2.drawXBMP(x, y, 12, 12, connectedIcon);
-		} else {
-			u8g2.drawXBMP(x, y, 12, 12, noconnectionIcon);
-		}
-	}
+  for (int i = 0; i < 9; i++) {
+    if (round((100 / 9) * i) <= signalStrength) 
+      u8g2.drawVLine(x + (2 * i), y - i, i);
+  }
 }
 
 /*
@@ -998,100 +938,96 @@ void drawSignal() {
  */
 void drawBatteryLevel() {
 
-	x = 108; 
-	y = 4;
+  x = 2; 
+  y = 2;
 
-	uint8_t level = batteryLevel();
+  uint8_t level = batteryLevel();
 
-	u8g2.drawFrame(x + 2, y, 18, 9);
-	u8g2.drawBox(x, y + 2, 2, 5);
+  u8g2.drawFrame(x, y, 18, 9);
+  u8g2.drawBox(x + 18, y + 2, 2, 5);
 
-	for (uint8_t i = 0; i < 5; i++) {
-		uint8_t p = round((100 / 5) * i);
-		if (p <= level)
-		{
-			u8g2.drawBox(x + 4 + (3 * i), y + 2, 2, 5);
-		}
-	}
+  for (uint8_t i = 0; i < 5; i++) {
+    uint8_t p = round((100 / 5) * i);
+    if (p <= level)
+    {
+      u8g2.drawBox(x + 2 + (3 * i), y + 2, 2, 5);
+    }
+  }
 }
 
-/* 
- * Generate a random address for nrf24 communication
- */
-uint64_t generateAddress()
-{
-	randomSeed( millis() );
+int checkButton() {    
   
-	// Holding the address as char array
-	char temp[10];
-
-	// Char arrays with HEX digites
-	const char *hexdigits = "0123456789ABCDEF";
-	const char *safedigits = "12346789BCDE";
-
-	// Generate a char array with the pipe address
-	for(uint8_t i = 0 ; i < 10; i++ )
-	{
-		char next;
-		
-		// Avoid addresses that start with 0x00, 0x55, 0xAA and 0xFF.
-		if(i == 0)
-			next = safedigits[ random(0, 12) ];
-		else if(i == 1)
-			next = safedigits[ random(0, 12) ];
-
-		// Otherwise generate random HEX digit
-		else
-			next = hexdigits[ random(0, 16) ];
-			
-		temp[i] = next;
-	}
- 
-	// Convert hex char array to uint64_t 
-	return StringToUint64(temp);
+   int event = 0;
+   buttonVal = digitalRead(buttonPin);
+   
+   // Button pressed down
+   if (buttonVal == LOW && buttonLast == HIGH && (millis() - upTime) > debounce)
+   {
+       downTime = millis();
+       ignoreUp = false;
+       waitForUp = false;
+       singleOK = true;
+       holdEventPast = false;
+       longHoldEventPast = false;
+       if ((millis()-upTime) < DCgap && DConUp == false && DCwaiting == true)  DConUp = true;
+       else  DConUp = false;
+       DCwaiting = false;
+   }
+   // Button released
+   else if (buttonVal == HIGH && buttonLast == LOW && (millis() - downTime) > debounce)
+   {        
+       if (not ignoreUp)
+       {
+           upTime = millis();
+           if (DConUp == false) DCwaiting = true;
+           else
+           {
+               event = DBL_CLICK;
+               DConUp = false;
+               DCwaiting = false;
+               singleOK = false;
+           }
+       }
+   }
+   // Test for normal click event: DCgap expired
+   if ( buttonVal == HIGH && (millis()-upTime) >= DCgap && DCwaiting == true && DConUp == false && singleOK == true && event != 2)
+   {
+       event = CLICK;
+       DCwaiting = false;
+   }
+   // Test for hold
+   if (buttonVal == LOW && (millis() - downTime) >= holdTime) {
+       // Trigger "normal" hold
+       if (not holdEventPast)
+       {
+           event = HOLD;
+           waitForUp = true;
+           ignoreUp = true;
+           DConUp = false;
+           DCwaiting = false;
+           holdEventPast = true;
+       }
+       // Trigger "long" hold
+       if ((millis() - downTime) >= longHoldTime)
+       {
+           if (not longHoldEventPast)
+           {
+               event = LONG_HOLD;
+               longHoldEventPast = true;
+           }
+       }
+   }
+   buttonLast = buttonVal;
+   return event;
 }
 
-String uint64ToString(uint64_t number)
-{
-	unsigned long part1 = (unsigned long)((number >> 32)); // Bitwise Right Shift
-	unsigned long part2 = (unsigned long)((number));
-
-	if(part1 == 0){
-	  return String(part2, DEC);
-	}
-	return String(part1, DEC) + String(part2, DEC);
+bool isShuttingDown() {
+  // button held for more than holdTime
+  return (buttonVal == LOW) && holdEventPast;
 }
 
-String uint64ToAddress(uint64_t number)
-{
-	unsigned long part1 = (unsigned long)((number >> 32)); // Bitwise Right Shift
-	unsigned long part2 = (unsigned long)((number));
-
-	return String(part1, HEX) + String(part2, HEX);
-}
-
-/* 
- * Convert hex String to uint64_t: http://forum.arduino.cc/index.php?topic=233813.0
- */
-uint64_t StringToUint64( char * string ){
-	uint64_t x = 0;
-	char c;
-	
-	do {
-		c = hexCharToBin( *string++ );
-		if (c < 0)
-			break;
-		x = (x << 4) | c;
-	} while (1);
-	
-	return x;
-}
-
-char hexCharToBin(char c) {
-	if (isdigit(c)) {  // 0 - 9
-		return c - '0';
-	} else if (isxdigit(c)) { // A-F, a-f
-		return (c & 0xF) + 9;
-	}
-	return -1;
+void vibrate(int ms) {
+  digitalWrite(vibroPin, HIGH);
+  delay(ms);
+  digitalWrite(vibroPin, LOW);
 }

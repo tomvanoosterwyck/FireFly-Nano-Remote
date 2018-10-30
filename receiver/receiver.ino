@@ -1,20 +1,27 @@
 #include <SPI.h>
-#include <EEPROM.h>
-#include <Servo.h>
-#include "RF24.h"
 #include "VescUart.h"
+#include <RH_RF69.h>
 
-// #define DEBUG
+//#define DEBUG
 
 // #define FIREFLYPCB // If receiver is based on the receiver PCB
 #define VERSION 2.0
 
 #ifdef DEBUG
-	#define DEBUG_PRINT(x)  Serial.println (x)
-	#include "printf.h"
+	#define debug(x)  Serial.println (x)
 #else
-	#define DEBUG_PRINT(x)
+	#define debug(x)
 #endif
+
+/************ Radio Setup ***************/
+
+#define RF69_FREQ 915.0
+
+// Feather M0 w/Radio
+#define RFM69_CS      8
+#define RFM69_INT     3
+#define RFM69_RST     4
+#define LED           13
 
 // Transmit and receive package
 struct package {		  // | Normal 	| Setting 	| Confirm
@@ -89,102 +96,75 @@ bool statusLedState = false;
 short statusCycleTime = 0;
 unsigned long previousStatusMillis, currentMillis, startCycleMillis = 0;
 
-const uint16_t defaultThrottle = 512;
+const uint16_t defaultThrottle = 127;
 const short timeoutMax = 500;
 
 // Defining receiver pins
-const uint8_t CE = 9;
-const uint8_t CS = 10;
+//const uint8_t CE = 9;
+//const uint8_t CS = 10;
 
-#ifdef FIREFLYPCB
-  const uint8_t statusLedPin = 13;
-#else
-  const uint8_t statusLedPin = 6;
-#endif
+const uint8_t statusLedPin = LED;
 
-const uint8_t throttlePin = 5;
+const uint8_t throttlePin = 11;
 const uint8_t resetAddressPin = 4;
 
-// Initiate RF24 class 
-RF24 radio(CE, CS);
-
-// Initiate Servo class
-Servo esc;
+// Singleton instance of the radio driver
+RH_RF69 radio(RFM69_CS, RFM69_INT);
 
 // Initiate VescUart class for UART communication
 VescUart UART;
 
 void setup()
 {
-	#ifdef DEBUG
-    UART.setDebugPort(&Serial);
-		Serial.begin(115200);
-		DEBUG_PRINT("** Esk8-remote receiver **");
-		printf_begin();
-	#else
-    #ifndef FIREFLYPCB
-		  // Using RX and TX to get VESC data
-      UART.setSerialPort(&Serial);
-      Serial.begin(115200);
-    #endif
-	#endif
+  delay(2500);
+  
+  Serial.begin(38400);
+  
+//  while (!Serial) {
+//    ; // wait for serial port to connect. Needed for native USB port only
+//  }
+  
+//  UART.setDebugPort(&Serial);
+  UART.setSerialPort(&Serial1);
+  Serial1.begin(9600);
 
-  #ifdef FIREFLYPCB
-    // Uses the Atmega32u4 that has a seperate UART port
-    UART.setSerialPort(&Serial1);
-    // Uses lower baud rate, since it runs on 8Mhz (115200 baud is to high).
-    Serial1.begin(19200);
-  #endif
+	//loadEEPROMSettings();
+  setDefaultEEPROMSettings();
 
-	loadEEPROMSettings();
+  pinMode(statusLedPin, OUTPUT);
+
 	initiateReceiver();
 
-	pinMode(statusLedPin, OUTPUT);
-	pinMode(resetAddressPin, INPUT_PULLUP);
-	esc.attach(throttlePin);
+  pinMode(throttlePin, OUTPUT);
 
-	DEBUG_PRINT("Setup complete - begin listening");
+	debug("Setup complete - begin listening");
+  rxSettings.triggerMode = 0;
 }
 
 void loop()
 { 
-  /* Control Status LED */
-  controlStatusLed();
+   getUartData(); 
+
+  // controlStatusLed();
   
-	/* Begin address reset */
-	if (digitalRead(resetAddressPin) == LOW) {
-		if(resetButtonState == LOW){
-			resetButtonTimer = millis();
-		}
-		resetButtonState = HIGH;
-	}else{
-		resetButtonState = LOW;
-	}
-
-	if (resetButtonState == HIGH && (millis() - resetButtonTimer) > 3000 ) {
-
-		DEBUG_PRINT("Loading default address");
-
-		// Load default address
-		rxSettings.address = defaultAddress;
-		updateEEPROMSettings(); 
-
-		// Reinitiate the recevier module
-		initiateReceiver();
-
-		setStatus(COMPLETE);
-
-		resetButtonTimer = millis();
-	}
-	/* End address reset */
-
 	/* Begin listen for transmission */
 	while (radio.available() && !recievedData)
 	{
+    // led on
+    digitalWrite(LED, HIGH);
+
 		// Read and store the received package
-		radio.read( &remPackage, sizeof(remPackage) );
-		DEBUG_PRINT( "New package: '" + String(remPackage.type) + "-" + String(remPackage.throttle) + "-" + String(remPackage.trigger) + "'" );
-    delay(10); 
+    uint8_t buf[RH_RF69_MAX_MESSAGE_LEN];
+    uint8_t len = sizeof(buf);
+      
+		radio.recv(buf, &len); // remPackageBuf
+    if (!len) {
+      return;
+    }
+    
+    memcpy(&remPackage, buf, sizeof(remPackage));
+
+		debug( "New package: '" + String(remPackage.type) + "-" + String(remPackage.throttle) + "-" + String(remPackage.trigger) + "'" );
     
 		if( remPackage.type <= 2 ){
 			timeoutTimer = millis();
@@ -200,26 +180,25 @@ void loop()
 
 		if ( remPackage.type == NORMAL ) {
 
-			// Normal package
-			speedControl( remPackage.throttle, remPackage.trigger );
+			speedControl( remPackage.throttle, remPackage.trigger );        
 			
-			if( rxSettings.controlMode != 0 ){
-				#ifdef DEBUG
-				  DEBUG_PRINT("Getting VESC data");
+      // Send returnData back in acknowledgement 
+      debug("Sending response");
 
-          #ifdef FIREFLYPCB
-            getUartData();
-          #endif
-				#else
-          getUartData();
-        #endif
-        
-			}
+      byte sz = sizeof(returnData);    
+      uint8_t buf[sz];
+      memcpy (buf, &returnData, sz);
 
-			// The next time a transmission is received, the returnData will be sent back in acknowledgement 
-			radio.writeAckPayload(1, &returnData, sizeof(returnData));
+      if (radio.send(buf, sz)) {
+        radio.waitPacketSent();
+            
+        // led on
+        digitalWrite(LED, LOW);    
+      } 
 
 		} else if ( remPackage.type == SETTING ) {
+      
+      debug("acquireSetting");
 
 			// Next package will be a change of setting
 			acquireSetting();
@@ -232,12 +211,12 @@ void loop()
 	/* Begin timeout handling */
 	if ( timeoutMax <= ( millis() - timeoutTimer ) )
 	{
+    debug("receiver timeout");
+
 		// No speed is received within the timeout limit.
 		setStatus(TIMEOUT);
 		speedControl( defaultThrottle, false );
 		timeoutTimer = millis();
-
-		DEBUG_PRINT( uint64ToAddress(rxSettings.address) + " - Timeout");
 	}
 	/* End timeout handling */
 }
@@ -289,10 +268,11 @@ void controlStatusLed(){
   }else{
     digitalWrite(statusLedPin, statusLedState);
   }  
+
 }
 
 void acquireSetting() {
-  
+  /*
 	uint8_t setting;
 	uint64_t value;
 
@@ -386,22 +366,43 @@ void acquireSetting() {
 			DEBUG_PRINT("Cleared buffer");
 		}
 	}
+
+ */
 }
 
 void initiateReceiver(){
+  
+  pinMode(RFM69_RST, OUTPUT);
+  digitalWrite(RFM69_RST, LOW);
+  
+  // manual reset
+  digitalWrite(RFM69_RST, HIGH);
+  delay(10);
+  digitalWrite(RFM69_RST, LOW);
+  delay(10);
+  
+  if (!radio.init()) {
+    debug("RFM69 radio init failed");
+    while (1);
+  }
+  debug("RFM69 radio init OK!");
+  
+  // Defaults after init are 434.0MHz, modulation GFSK_Rb250Fd250, +13dbM (for low power module)
+  // No encryption
+  if (!radio.setFrequency(RF69_FREQ)) {
+    debug("setFrequency failed");
+  }
 
-	radio.begin();
-	radio.setChannel(defaultChannel);
-	radio.enableAckPayload();
-	radio.enableDynamicPayloads();
-	radio.openReadingPipe(1, rxSettings.address);
-	radio.startListening();
+  // If you are using a high power RF69 eg RFM69HW, you *must* set a Tx power with the
+  // ishighpowermodule flag set like this:
+  radio.setTxPower(20, true);  // range from 14-20 for power, 2nd arg must be true for 69HCW
 
-	#ifdef DEBUG
-		DEBUG_PRINT("Printing receiver details");
-		radio.printDetails();
-	#endif
-
+  // The encryption key has to be the same as the one in the transmitter
+  uint8_t key[] = { 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
+                    0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08};
+  radio.setEncryptionKey(key);
+  
+  debug("RFM69 radio @" + String(RF69_FREQ) + " MHz");
 }
 
 // Update a single setting value
@@ -439,7 +440,6 @@ void setCruise ( bool cruise = true, uint16_t setPoint = defaultThrottle ){
 
     // Setpoint not used (PID by VESC)
     UART.nunchuck.lowerButton = cruise;
-    esc.detach();
 
     // Make sure the motor doesn't begin to spin wrong way under high load (and don't allow cruise backwards)
     if( returnData.rpm < 0 ){
@@ -460,32 +460,23 @@ void setCruise ( bool cruise = true, uint16_t setPoint = defaultThrottle ){
 
 void setThrottle( uint16_t throttle )
 {
-  if( rxSettings.controlMode == 0 ){
-    
-    esc.attach(throttlePin);
-    esc.writeMicroseconds( map(throttle, 0, 1023, 1000, 2000) );  
-  }
-  else if( rxSettings.controlMode == 1 ){
+    // PPM
+//    digitalWrite(throttlePin, HIGH);
+//    delayMicroseconds(map(throttle, 0, 255, 1000, 2000) );
+//    digitalWrite(throttlePin, LOW);
 
-    esc.attach(throttlePin);
-    esc.writeMicroseconds( map(throttle, 0, 1023, 1000, 2000) ); 
-
-  }
-  else if( rxSettings.controlMode == 2 ){
-    
-    UART.nunchuck.valueY = map(throttle, 0, 1023, 0, 255);
+    // UART
+    UART.nunchuck.valueY =  throttle;
+    UART.nunchuck.upperButton = false;
     UART.nunchuck.lowerButton = false;
-    esc.detach();
     UART.setNunchuckValues();
-
-  }
 }
 
 void speedControl( uint16_t throttle , bool trigger )
-{
+{    
 	// Kill switch
 	if( rxSettings.triggerMode == 0 ){
-		if ( trigger == true || throttle < 512 ){
+		if ( trigger == true || throttle < 127 ){
 			setThrottle( throttle );
 		}
 		else{
@@ -519,8 +510,6 @@ void getUartData()
 
 		lastUartPull = millis();
 
-    DEBUG_PRINT("Getting the DATA");
-
 		// Only get what we need
 		if ( UART.getVescValues() )
 		{
@@ -528,13 +517,14 @@ void getUartData()
 			returnData.inpVoltage		  = UART.data.inpVoltage;
 			returnData.rpm 				    = UART.data.rpm;
 			returnData.tachometerAbs 	= UART.data.tachometerAbs;
-		} 
-		else
+		} else 
 		{
-			returnData.ampHours 		  = 0.0;
-			returnData.inpVoltage     = 0.0;
-			returnData.rpm 				    = 0;
-			returnData.tachometerAbs  = 0;
+//			returnData.ampHours 		  = 0.0;
+//			returnData.inpVoltage     = 0.0;
+//			returnData.rpm 				    = 0;
+//			returnData.tachometerAbs  = 0;
+      debug("No UART data received!"); 
+
 		}
 	}
 }
@@ -560,7 +550,6 @@ String uint64ToAddress(uint64_t number)
 }
 
 // Settings functions
-
 void setDefaultEEPROMSettings()
 {
 	for ( int i = 0; i < numOfSettings; i++ )
@@ -578,7 +567,7 @@ void loadEEPROMSettings()
 	bool rewriteSettings = false;
 
 	// Load settings from EEPROM to custom struct
-	EEPROM.get(0, rxSettings);
+//	EEPROM.get(0, rxSettings);
 
 	// Loop through all settings to check if everything is fine
 	for ( int i = 0; i < numOfSettings; i++ ) {
@@ -606,13 +595,13 @@ void loadEEPROMSettings()
 		updateEEPROMSettings();
 	}
 
-	DEBUG_PRINT("Settings loaded");
+	debug("Settings loaded");
 }
 
 // Write settings to the EEPROM
 void updateEEPROMSettings()
 {
-	EEPROM.put(0, rxSettings);
+//	EEPROM.put(0, rxSettings);
 }
 
 // Set a value of a specific setting by index.
