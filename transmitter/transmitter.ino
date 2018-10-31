@@ -583,8 +583,11 @@ if (!radio.init()) {
   radio.setTxPower(20, true);  // range from 14-20 for power, 2nd arg must be true for 69HCW
 
   // The encryption key has to be the same as the one in the receiver
-  uint8_t key[] = { 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
-                    0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08};
+  // Replace dots with random bytes from this page:
+  // https://www.random.org/cgi-bin/randbyte?nbytes=16&format=h
+  uint8_t key[] = { 0x.., 0x.., 0x.., 0x.., 0x.., 0x.., 0x.., 0x..,
+                    0x.., 0x.., 0x.., 0x.., 0x.., 0x.., 0x.., 0x..};
+                    
   radio.setEncryptionKey(key);
   
   debug(String(RF69_FREQ) + " Mhz");  
@@ -611,7 +614,7 @@ void updateMainDisplay()
 
         // 1s update
 
-        if (millis() - lastScreenUpdate > 500) {
+        if (millis() - lastScreenUpdate > 250) {
           u8g2.clearBuffer();
 
           drawPage();
