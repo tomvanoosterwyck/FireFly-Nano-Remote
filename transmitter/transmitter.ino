@@ -219,12 +219,7 @@ uint8_t x, y;
 unsigned long lastSignalBlink;
 bool signalBlink = false;
 
-<<<<<<< HEAD
-// Instantiating RF24 object for NRF24 communication
-RF24 radio(9, 10);
-=======
 unsigned long lastScreenUpdate;
->>>>>>> development
 
 // Defining variables for Settings menu
 bool changeSettings     = false; // Global flag for whether or not one is editing the settings
@@ -273,7 +268,7 @@ void loop() {
 	// Normal transmission. The state of the trigger, cruise and throttle is handled by the receiver. 
 	remPackage.type = 0;
   
-	remPackage.trigger = triggerActiveSafe();
+	remPackage.trigger = triggerActive();
 	remPackage.throttle = throttle;
   
   switch (checkButton()) {
@@ -311,49 +306,11 @@ void sleep()
   // radio
   radio.sleep();
 
-<<<<<<< HEAD
-  if (hallMeasurement >= (remoteSettings.maxHallValue - 150) && settingsLoopFlag == false) {
-    // Up
-    if (changeSelectedSetting == true) {
-      int val = getSettingValue(currentSetting) + 1;
-
-      if (inRange(val, settingRules[currentSetting][1], settingRules[currentSetting][2])) {
-        setSettingValue(currentSetting, val);
-        settingsLoopFlag = true;
-      }
-    } else {
-      if (currentSetting != 0) {
-        currentSetting--;
-        settingsLoopFlag = true;
-      }
-    }
-  }
-  else if (hallMeasurement <= (remoteSettings.minHallValue + 150) && settingsLoopFlag == false) {
-    // Down
-    if (changeSelectedSetting == true) {
-      int val = getSettingValue(currentSetting) - 1;
-
-      if (inRange(val, settingRules[currentSetting][1], settingRules[currentSetting][2])) {
-        setSettingValue(currentSetting, val);
-        settingsLoopFlag = true;
-      }
-    } else {
-      if (currentSetting < (numOfSettings - 1)) {
-        currentSetting++;
-        settingsLoopFlag = true;
-      }
-    }
-  } else if (inRange(hallMeasurement, remoteSettings.centerHallValue - 50, remoteSettings.centerHallValue + 50)) {
-    settingsLoopFlag = false;
-  }
-}
-=======
   digitalWrite(LED, LOW);
 
   USBDevice.standby();
   
   delay(200);
->>>>>>> development
 
   // Set sleep mode to deep sleep 
   SCB->SCR |= SCB_SCR_SLEEPDEEP_Msk;
@@ -646,14 +603,6 @@ void updateMainDisplay()
 }
 
 
-<<<<<<< HEAD
-  DEBUG_PRINT( (String)hallMeasurement );
-  
-  if (hallMeasurement >= remoteSettings.centerHallValue) {
-    throttle = constrain(map(hallMeasurement, remoteSettings.centerHallValue, remoteSettings.maxHallValue, 127, 255), 127, 255);
-  } else {
-    throttle = constrain(map(hallMeasurement, remoteSettings.minHallValue, remoteSettings.centerHallValue, 0, 127), 0, 127);
-=======
 /*
  * Measure the hall sensor output and calculate throttle posistion
  */
@@ -681,7 +630,6 @@ void calculateThrottlePosition()
   else {
     // Default value if stick is in deadzone
     throttle = 127;
->>>>>>> development
   }
 
   // removeing center noise
@@ -772,7 +720,6 @@ void drawConnectingScreen()
     int y = 8;
     
     u8g2.drawXBMP((64-24)/2, y, 24, 24, logo);
-  
   
     drawString("Firefly Nano", -1, y + 42, u8g2_font_crox1h_tf);
  
