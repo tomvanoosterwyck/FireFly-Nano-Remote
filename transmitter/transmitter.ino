@@ -326,9 +326,14 @@ void sleep()
 
   SCB->SCR &= ~SCB_SCR_SLEEPDEEP_Msk;
 
+  USBDevice.attach();
+
   power = true;
 }
 
+void reset() {
+  NVIC_SystemReset();
+}
 
 bool pressed(int button) {
   return digitalRead(button) == LOW;
