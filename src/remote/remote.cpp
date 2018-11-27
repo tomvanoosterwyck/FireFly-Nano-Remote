@@ -795,15 +795,18 @@ void updateMainDisplay()
   else if (connected) { // main UI
 
      // 10 ms
-    drawBatteryLevel(); // 2 ms
-    // drawMode();
-    drawSignal(); // 1 ms
+
 
     switch (page) {
-      case PAGE_MAIN: drawMainPage(); break;
-      case PAGE_EXT:  drawExtPage(); break;
-      case PAGE_MENU: drawSettingsMenu(); break;
-      case PAGE_DEBUG: drawDebugPage(); break;
+    case PAGE_MAIN:
+      drawBatteryLevel(); // 2 ms
+      // drawMode();
+      drawSignal(); // 1 ms
+      drawMainPage();
+      break;
+    case PAGE_EXT:  drawExtPage(); break;
+    case PAGE_MENU: drawSettingsMenu(); break;
+    case PAGE_DEBUG: drawDebugPage(); break;
     }
 
   } else { // connecting
@@ -881,9 +884,8 @@ void drawSettingsMenu() {
 
   //  display.drawFrame(0,0,64,128);
 
-  int y = 30;
+  int y = 10;
   drawString("Menu", -1, y, fontDesc);
-
 
 }
 
@@ -891,8 +893,8 @@ void drawDebugPage() {
 
   //  display.drawFrame(0,0,64,128);
 
-  int y = 0;
-  //  drawString("Debug", -1, y, u8g2_font_t0_18b_tr);
+  int y = 10;
+  drawString("Debug", -1, y, fontDesc);
 
   y = 35;
   if (connected) drawStringCenter(String(lastDelay), " ms", y);
@@ -963,67 +965,57 @@ void drawMode() {
 
 }
 
-void drawBars(int x, int bars, String s) {
+void drawBars(int x, int y, int bars, String caption, String s) {
 
-  int y = 60;
+  const int width = 14;
+
+  drawString(caption, x + 4, 10, fontDesc);
 
   if (bars > 0) { // up
     for (int i = 0; i <= 10; i++)
-      if (i <= bars) drawHLine(x+2, y - i*3, 6);
+      if (i <= bars) drawHLine(x, y - i*3, width);
   } else { // down
     for (int i = 0; i >= -10; i--)
-      if (i >= bars) drawHLine(x+2, y - i*3, 6);
+      if (i >= bars) drawHLine(x, y - i*3, width);
   }
 
-  // frame top left
-  drawHLine(x + 2, y-33, 6);
-  drawHLine(x + 2, y+33, 6);
+  // frame
+  drawHLine(x, y-33, width);
+  drawHLine(x, y+33, width);
 
-
-  // drawVLine(x, y-33, 3);
-
-  // top right
-  // drawHLine(x + 10 - 3, y-33, 3)
-  // drawVLine(x + 10, y-33, 3);
-
-  // middle
-  // drawVLine(x, y-3, 6);
-  // drawVLine(x + 10, y-3, 6);
-
-  drawString(s, x, 110, fontPico);
-
+  // values
+  drawString(s, x, y + 48, fontPico);
 }
-
 
 /*
    Print the main page: Throttle, battery level and telemetry
 */
 void drawExtPage() {
 
-  const int gap = 17;
+  const int gap = 20;
 
-  int x = 2;
-  int y = 60;
+  int x = 5;
+  int y = 48;
   float value;
   int bars;
 
-  drawHLine(x, y, 64-2);
+  drawHLine(2, y, 64-2);
 
   // 1 - throttle
   value = throttle;  //telemetry.getInputCurrent
   bars = map(throttle, 0, 255, -10, 10);
-  drawBars(x, bars, String(bars));
+  drawBars(x, y, bars, "T", String(bars));
 
+  // motor current
   x += gap;
   bars = map(telemetry.getMotorCurrent(), MOTOR_MIN, MOTOR_MAX, -10, 10);
-  drawBars(x, bars, String(telemetry.getMotorCurrent(),0));
+  drawBars(x, y, bars, "M", String(telemetry.getMotorCurrent(),0));
 
+  // battery current
   x += gap;
   bars = map(telemetry.getInputCurrent(), BATTERY_MIN, BATTERY_MAX, -10, 10);
-  drawBars(x, bars, String(telemetry.getInputCurrent(), 0));
+  drawBars(x, y, bars, "B", String(telemetry.getInputCurrent(), 0) );
 
-  x += gap;
-  drawBars(x, 0, "");
 }
 
 /*
