@@ -294,10 +294,10 @@ void sleep()
 
   power = false;
 
-  // interrupt
-  attachInterrupt (digitalPinToInterrupt(PIN_BUTTON), isr, LOW);  // attach interrupt handler
-
   #ifdef ARDUINO_SAMD_ZERO
+
+    // interrupt
+    attachInterrupt (digitalPinToInterrupt(PIN_BUTTON), isr, LOW);  // attach interrupt handler
 
     radio.sleep();
 
@@ -315,7 +315,15 @@ void sleep()
 
   #elif ESP32
 
+    // wait for button release
+    while (pressed(PIN_BUTTON)) vTaskDelay(10);
 
+    esp_deep_sleep_enable_ext0_wakeup((gpio_num_t)PIN_BUTTON, 0);
+
+    // Enter sleep mode and wait for interrupt
+    esp_deep_sleep_start();
+
+    // CPU will be reset here
   #endif
 
   // After waking the code continues
