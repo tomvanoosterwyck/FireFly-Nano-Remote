@@ -579,8 +579,8 @@ bool responseAvailable(uint8_t size) {
     while (true) {
 
       if (radio.available()) return true;
-      // wait 10ms
-      if (millis() - ms > 10) return false; // timeout
+      // wait 100 ms
+      if (millis() - ms > 100) return false; // timeout
     }
 
   #elif ESP32
