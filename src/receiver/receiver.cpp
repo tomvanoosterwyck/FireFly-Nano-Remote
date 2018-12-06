@@ -56,14 +56,14 @@ void setup()
   #ifdef ARDUINO_SAMD_FEATHER_M0
     //  UART.setDebugPort(&Serial);
     UART.setSerialPort(&Serial1);
-    Serial1.begin(9600);
+    Serial1.begin(UART_SPEED);
     initRadio(radio);
 
   #elif ESP32
 
     UART.setSerialPort(&MySerial);
     // uart connection
-    MySerial.begin(9600, SERIAL_8N1, RX, TX);
+    MySerial.begin(UART_SPEED, SERIAL_8N1, RX, TX);
 
     initRadio();
 

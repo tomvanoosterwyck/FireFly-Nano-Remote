@@ -5,12 +5,6 @@
 
 // #define DEBUG // Uncomment DEBUG if you need to debug the remote
 
-#ifdef DEBUG
-  #define debug(x) Serial.println (x)
-#else
-  #define debug(x)
-#endif
-
 /*
   Connect receiver and open Serial Monitor (Cmd+Shift+M),
   it will display the correct chip ID.
@@ -30,6 +24,7 @@ const uint32_t boardAddress = 0xc89cb368;
 #endif
 
 // #define RECEIVER_SCREEN 1
+const int UART_SPEED = 115200;
 
 // VESC current, for graphs only
 const int MOTOR_MIN = -30;
@@ -136,5 +131,11 @@ struct ConfigPacket {
 };
 
 const int default_throttle = 127;
+
+#ifdef DEBUG
+  #define debug(x) Serial.println (x)
+#else
+  #define debug(x)
+#endif
 
 #endif

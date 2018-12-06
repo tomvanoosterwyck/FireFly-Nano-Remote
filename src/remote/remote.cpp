@@ -863,9 +863,7 @@ void drawConnectingScreen()
 
   // hall + throttle
   y += 14;
-  String tr = "0";
-  if (triggerActive()) tr = "T";
-  drawString(tr + " " + String(hallValue) + " " + String(round(throttle)), -1, y, fontMicro);
+  drawString((triggerActive() ? "T " : "0 ") + String(hallValue) + " " + String(throttle, 0), -1, y, fontMicro);
 
   // remote battery
   y += 12;
