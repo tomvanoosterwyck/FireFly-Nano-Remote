@@ -24,7 +24,15 @@ const uint32_t boardAddress = 0xc89cb368;
 #endif
 
 // #define RECEIVER_SCREEN 1
+
+// UART
 const int UART_SPEED = 115200;
+const uint16_t uartPullInterval = 150;
+
+// 10ms for 115200 bauds, 100ms for 9600 bauds
+const int UART_TIMEOUT = 10;
+
+const int REMOTE_RX_TIMEOUT = 20;
 
 // VESC current, for graphs only
 const int MOTOR_MIN = -30;
@@ -51,34 +59,36 @@ struct RemotePacket {
   uint8_t  version;  // 1
   uint8_t  command;	 // Throttle | Light | Settings
   uint8_t  data;     // e.g. throttle value
-  uint8_t  crc;
+  uint8_t  counter;  // >> rand()
   // --------------  // keep 4 byte alignment!
 };
 
+
+
 // commands
 const uint8_t SET_THROTTLE  = 1;
-const uint8_t GET_CONFIG    = 2;
-const uint8_t PAIR_REQUEST  = 3;
+const uint8_t SET_CRUISE    = 2;
+
+const uint8_t GET_CONFIG    = 3;
+const uint8_t PAIR_REQUEST  = 4;
 
 // Receiver > remote  3 bytes
 struct ReceiverPacket {
+  uint8_t type;
   uint8_t chain;	      // CRC from RemotePacket
-  uint8_t response;
-  uint8_t crc;
+  uint8_t r1;
+  uint8_t r2;
 };
 
-// responses
+// responses type
 const uint8_t ACK_ONLY  = 1;
 const uint8_t TELEMETRY = 2;
 const uint8_t CONFIG    = 3;
 const uint8_t PAIRING   = 4;
 
- // https://github.com/espressif/arduino-esp32/tree/master/libraries/Preferences
-// https://github.com/cmaglie/FlashStorage
-
-// New VESC values
+// New VESC values 12 + 3
 struct TelemetryPacket {
-  uint8_t  chain;	        // CRC from RemotePacket
+  ReceiverPacket header;
   // --------------  // keep 4 byte alignment!
   uint16_t voltage;       // volts * 100
   uint16_t speed;         // km/h * 100
@@ -87,8 +97,8 @@ struct TelemetryPacket {
   int16_t motorCurrent;  // motor amps * 100
   // --------------  // keep 4 byte alignment!
   int16_t inputCurrent;  // battery amps * 100
-
-  uint8_t  crc;	        // CRC
+  int16_t reserved;
+  // --------------  // keep 4 byte alignment!
 
   uint16_t f2w(float f) { return f * 100; } // pack float
   float w2f(uint16_t w) { return float(w) / 100; }; // unpack float
@@ -112,19 +122,25 @@ struct TelemetryPacket {
   void setInputCurrent(float f) { inputCurrent = f2wi(f); }
 };
 
+const int PACKET_SIZE = sizeof(TelemetryPacket);
+const int CRC_SIZE = 1;
+
 // board setting
 struct ConfigPacket {
-  uint8_t  chain;	        // CRC from RemotePacket
+  ReceiverPacket header;
+  // --------------  // keep 4 byte alignment!
   uint8_t  maxSpeed;	    // m/s
   uint8_t  maxRange;      // km
   uint8_t  batteryCells;
-  // --------------  // keep 4 byte alignment!
   uint8_t  batteryType;   // 0: Li-ion | 1: LiPo
+  // --------------  // keep 4 byte alignment!
   uint8_t  motorPoles;
   uint8_t  wheelDiameter;
   uint8_t  wheelPulley;
-  // --------------  // keep 4 byte alignment!
   uint8_t  motorPulley;
+  // --------------  // keep 4 byte alignment!
+  int16_t r1;  // battery amps * 100
+  int16_t r2;
 
   float getMaxSpeed() { return (maxSpeed) / 100; }
   void setMaxSpeed(float f) { maxSpeed = f * 100; }

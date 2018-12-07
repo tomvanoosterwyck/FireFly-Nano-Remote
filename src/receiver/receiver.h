@@ -26,7 +26,6 @@ bool telemetryUpdated = false;
 
 // Last time data was pulled from VESC
 unsigned long lastUartPull;
-uint16_t uartPullInterval = 250;
 
 // Variables to hold values for speed and distance calculation
 float gearRatio;
@@ -34,7 +33,7 @@ float ratioRpmSpeed;
 float ratioPulseDistance;
 
 uint32_t timeoutTimer = 0;
-bool recievedData = false;
+bool receivedData = false;
 const short timeoutMax = 500;
 
 // Cruise control
@@ -69,11 +68,11 @@ void radioExchange();
 bool receiveData();
 bool sendData(uint8_t response);
 void sendUartData();
-void setCruise(bool cruise = true, uint16_t setPoint = default_throttle );
 void setDefaultEEPROMSettings();
 void setSettingValue(int index, uint64_t value);
 void setStatus(uint8_t code);
 void setThrottle(uint16_t value);
+void setCruise(uint8_t value);
 void speedControl(uint16_t throttle , bool trigger );
 String uint64ToAddress(uint64_t number);
 String uint64ToString(uint64_t number);

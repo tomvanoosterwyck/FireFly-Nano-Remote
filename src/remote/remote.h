@@ -13,6 +13,8 @@
 #elif ESP32
   #include <LoRa.h>
   #include <driver/adc.h>
+  #include <esp_sleep.h>
+  #include <esp_deep_sleep.h>
 #endif
 
 struct RemoteSettings {
@@ -61,6 +63,7 @@ float throttle;
 // Defining variables for OLED display
 unsigned long lastSignalBlink;
 bool signalBlink = false;
+byte counter = 0;
 
 // Button constants
 const int CLICK     = 1;

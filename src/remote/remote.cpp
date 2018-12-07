@@ -432,14 +432,17 @@ bool triggerActiveSafe() {
 bool sendData() {
 
   // Transmit the remPacket
-  byte sz = sizeof(remPacket);
+  byte sz = sizeof(remPacket) + CRC_SIZE; // crc
   uint8_t buf[sz];
-  memcpy (buf, &remPacket, sz);
+  memcpy (buf, &remPacket, sizeof(remPacket));
+
+  // calc crc
+  buf[sz-CRC_SIZE] = CRC8(&remPacket, sizeof(remPacket));
 
   bool sent = false;
 
-  debug("sending command:" + String(remPacket.command)
-      + ", crc: " + String(remPacket.crc, HEX));
+  debug("sending command: " + String(remPacket.command)
+       + ", counter: " + String(remPacket.counter));
 
   #ifdef ESP32
 
@@ -451,9 +454,9 @@ bool sendData() {
 
     LoRa.endPacket();
 
-    //LoRa.receive(sizeof(ReceiverPacket));
+    // LoRa.receive(PACKET_SIZE + CRC_SIZE);
 
-    sent = t > 0;
+    sent = t == sz;
 
   #elif ARDUINO_SAMD_ZERO
 
@@ -462,134 +465,109 @@ bool sendData() {
 
   #endif
 
-  // debug("sent");
-
   return sent;
 }
 
 bool receiveData() {
 
-  uint8_t len;
-  uint8_t buf[sizeof(TelemetryPacket)]; // biggest packet
+  uint8_t len =  PACKET_SIZE + CRC_SIZE;
+  uint8_t buf[len];
 
-  // receive ACK packet
-  len = sizeof(ReceiverPacket);
-
+  // receive a packet and check crc
   if (!receivePacket(buf, len)) return false;
 
-  memcpy(&recvPacket, buf, len);
-
-  // check dynamic code
-  if (recvPacket.chain != remPacket.crc) return false;
-  // check recvPacket.crc
-
-  debug("Response: " + String(recvPacket.response)
-    + ", chain: " + String(recvPacket.chain)
-    + ", CRC: " + String(recvPacket.crc));
-
-  // any extra data?
-  switch (recvPacket.response) {
-
-  case ACK_ONLY: return true;
-
-  case TELEMETRY: // receive telemetry
-
-    len = sizeof(TelemetryPacket);
-    if (receivePacket(buf, len)) {
-
-        memcpy(&telemetry, buf, len);
-
-        // check chain and CRC
-
-        debug("battery " + String(telemetry.getVoltage()));
-        return true;
-    }
-    break;
-
-  case CONFIG: // receive board configuration
-
-    len = sizeof(ConfigPacket);
-    if (receivePacket(buf, len)) {
-
-        memcpy(&boardConfig, buf, len);
-
-        // check chain and CRC
-        debug("max speed " + String(boardConfig.maxSpeed ));
-
-        needConfig = false;
-        return true;
-    }
-    break;
-
+  // parse header
+  memcpy(&recvPacket, buf, sizeof(recvPacket));
+  if (recvPacket.chain != remPacket.counter) {
+    debug("Wrong chain value!");
+    return false;
   }
 
+  // response type
+  switch (recvPacket.type) {
+    case ACK_ONLY:
+      debug("Ack: chain " + String(recvPacket.chain));
+      return true;
+
+    case TELEMETRY:
+      memcpy(&telemetry, buf, PACKET_SIZE);
+
+      debug("Telemetry: battery " + String(telemetry.getVoltage())
+        + ", speed " + String(telemetry.getSpeed())
+        + ", dist " + String(telemetry.getDistance())
+        + ", chain " + String(telemetry.header.chain)
+      );
+      return true;
+
+    case CONFIG:
+      memcpy(&boardConfig, buf, PACKET_SIZE);
+
+      // check chain and CRC
+      debug("ConfigPacket: max speed " + String(boardConfig.maxSpeed ));
+
+      needConfig = false;
+      return true;
+  }
+
+  debug("Unknown response");
   return false;
 }
 
 bool receivePacket(uint8_t* buf, uint8_t len) {
 
+  uint8_t expected = len;
+  long ms = millis();
+
   // Should be a message for us now
   if (!responseAvailable(len)) return false;
 
-  debug("receive packet ");
-
   #ifdef ARDUINO_SAMD_ZERO
 
-    bool received = radio.recv(buf, &len);
+    if (!radio.recv(buf, &len)) return false;
 
-    if (received) {
-      //memcpy(&returnData, buf, sizeof(returnData));
-
-      // signal
-      signalStrength = constrain(map(radio.lastRssi(), -77, -35, 0, 100), 0, 100);
-    }
-
-    return received;
+    // signal
+    signalStrength = constrain(map(radio.lastRssi(), -77, -35, 0, 100), 0, 100);
 
   #elif ESP32
-
     int i = 0;
     while (LoRa.available()) {
       buf[i] = LoRa.read();
       i++;
-      // check length
+    };
 
-
-    }
-    //memcpy(&returnData, buf, len);
-
-    //    debug("rc "+String(returnData.inpVoltage));
-
+    len = i;
     lastRssi = LoRa.packetRssi();
-
     signalStrength = constrain(map(LoRa.packetRssi(), -100, -50, 0, 100), 0, 100);
-
-    return true;
-
   #endif
+
+  // check length
+  if (len != expected) {
+    debug("Wrong packet length!");
+    return false;
+  }
+
+  // check crc
+  if (CRC8(buf, len - CRC_SIZE) != buf[len - CRC_SIZE]) {
+    debug("CRC mismatch!");
+    return false;
+  }
+
+  return true;
 }
 
 
-bool responseAvailable(uint8_t size) {
-
-  long ms = millis();
+bool responseAvailable(uint8_t len) {
 
   #ifdef ARDUINO_SAMD_ZERO
 
-    while (true) {
-
-      if (radio.available()) return true;
-      // wait 100 ms
-      if (millis() - ms > 100) return false; // timeout
-    }
+    return radio.waitAvailableTimeout(REMOTE_RX_TIMEOUT);
 
   #elif ESP32
 
+    long ms = millis();
     while (true) {
-      // data available?
-      if (LoRa.parsePacket(size) > 0) return true;
-      // wait 10ms
-      if (millis() - ms > 30) return false; // timeout
+      if (LoRa.parsePacket(len) > 0) return true;
+      if (millis() - ms > REMOTE_RX_TIMEOUT) return false; // timeout
     }
 
   #endif
@@ -601,12 +579,26 @@ void prepatePacket() {
     // Ask for board configuration
     remPacket.command = GET_CONFIG;
   } else {
-    // Normal transmission. Send throttle to the receiver.
-    remPacket.command = SET_THROTTLE;
-    remPacket.data = round(throttle);
+    // speed control
+    switch (controlMode) {
+    case MODE_CRUISE: // Set cruise mode
+      remPacket.command = SET_CRUISE;
+      remPacket.data = round(throttle);
+      break;
+    case MODE_NORMAL: // Send throttle to the receiver.
+      remPacket.command = SET_THROTTLE;
+      remPacket.data = round(throttle);
+      break;
+    case MODE_IDLE:
+      // Idle mode. Send throttle to the receiver.
+      remPacket.command = SET_THROTTLE;
+      remPacket.data = default_throttle;
+
+      break;
+    }
   }
-  remPacket.address = boardAddress; // cycle
-  remPacket.crc = CRC8(&remPacket, sizeof(remPacket)-1);
+  remPacket.address = boardAddress; // todo: cycle
+  remPacket.counter = counter++;
 }
 /*
    Function used to transmit the remPacket and receive auto acknowledgement.
@@ -615,17 +607,13 @@ void transmitToReceiver() {
 
   // send packet
   digitalWrite(LED, HIGH);
-
   prepatePacket();
 
   if (sendData()) {
-
     // Listen for an acknowledgement reponse and return of uart data
     if (receiveData()) {
-
       // transmission time
       lastDelay = millis() - lastTransmission;
-
       digitalWrite(LED, LOW);
 
       // Transmission was a success
@@ -633,31 +621,22 @@ void transmitToReceiver() {
 
       connected = true;
       failCount = 0;
-
     } else {
-
       debug("No reply");
       failCount++;
-
-      // repeat now
-      //lastTransmission = 0;
     }
 
   } else {
     // Transmission was not a succes
     failCount++;
-
     debug("Failed transmission");
   }
 
   // If lost more than 5 transmissions, we can assume that connection is lost.
   if (failCount > 5) {
-
     if (connected) vibrate(200);
-
     connected = false;
-
-    //      debug("Disconnected");
+    // debug("Disconnected");
   }
 }
 

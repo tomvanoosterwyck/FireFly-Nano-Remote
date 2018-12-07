@@ -61,6 +61,15 @@ class VescUart
 		 */
 		bool getVescValues(void);
 
+
+		/**
+		 * @brief      Receives the message over Serial w/o unpacking
+		 *
+		 * @param      payloadReceived  - The received payload as a unit8_t Array
+		 * @return     The number of bytes receeived within the payload
+		 */
+		int receiveUartMessageRaw(uint8_t * payloadReceived);
+
 		/**
 		 * @brief      Sends values for joystick and buttons to the nunchuck app
 		 */
@@ -91,6 +100,12 @@ class VescUart
 		void setDuty(float duty);
 
 		/**
+		 * @brief      Set the timeout for reading data
+		 * @param      timeout  - The desired timeout (100 is enough for 9600 bauds, 10ms for 115200 bauds)
+		 */
+		void setTimeout(int timeout);
+
+		/**
 		 * @brief      Help Function to print struct dataPackage over Serial for Debug
 		 */
 		void printVescValues(void);
@@ -103,6 +118,9 @@ class VescUart
 		/** Variabel to hold the reference to the Serial object to use for debugging. 
 		  * Uses the class Stream instead of HarwareSerial */
 		Stream* debugPort = NULL;
+
+		/** UART reading timeout, 100 is ok for 9600 bauds, 10ms for 115200 bauds */
+		int maxTimeout = 100;
 
 		/**
 		 * @brief      Packs the payload and sends it over Serial

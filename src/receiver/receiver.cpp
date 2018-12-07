@@ -51,7 +51,9 @@ void setup()
   calculateRatios();
 
   pinMode(LED, OUTPUT);
-//  UART.setDebugPort(&Serial);
+
+  //  UART.setDebugPort(&Serial);
+  UART.setTimeout(UART_TIMEOUT);
 
   #ifdef ARDUINO_SAMD_FEATHER_M0
     //  UART.setDebugPort(&Serial);
@@ -60,9 +62,8 @@ void setup()
     initRadio(radio);
 
   #elif ESP32
-
-    UART.setSerialPort(&MySerial);
     // uart connection
+    UART.setSerialPort(&MySerial);
     MySerial.begin(UART_SPEED, SERIAL_8N1, RX, TX);
 
     initRadio();
@@ -215,11 +216,11 @@ void loop() // core 1
 #endif
 
 bool receiveData() {
-  debug('receiveData');
+  // debug("receiveData");
 
+  uint8_t len = sizeof(RemotePacket) + CRC_SIZE; // 9
+  uint8_t buf[len];
 
-  uint8_t buf[sizeof(remPacket)];
-  uint8_t len = sizeof(RemotePacket);
   bool received = false;
 
   #ifdef ARDUINO_SAMD_ZERO
@@ -228,34 +229,44 @@ bool receiveData() {
 
   #elif ESP32
 
+    int bytes = 0;
     for (int i = 0; i < len; i++) {
       buf[i] = LoRa.read();
+      bytes++;
     }
     // lastRssi = LoRa.packetRssi();
-
+    len = bytes;
     received = true;
 
   #endif
 
   if (!received) return false;
 
+  // size check
+  if (len != sizeof(RemotePacket) + CRC_SIZE) {
+    debug("Wrong packet size");
+    return false;
+  }
+
+  // crc check
+  if (CRC8(buf, sizeof(remPacket)) != buf[sizeof(remPacket)]) {
+    debug("CRC mismatch");
+    return false;
+  }
+
   // process packet
   memcpy(&remPacket, buf, sizeof(remPacket));
 
-  // remPacket.version == VERSION ?
-
+  // address check
   if (remPacket.address != boardID) {
     Serial.print("Wrong Board ID, please use: 0x");
     Serial.println(String(boardID, HEX));
     return false;
   }
 
-  if (remPacket.crc != CRC8(&remPacket, sizeof(remPacket)-1)) {
-    debug('CRC mismatch');
-    return false;
+  if (remPacket.version != VERSION) {
+    Serial.print("Version mismatch!");
   }
-
-  throttle = remPacket.data;
 
   return true;
 
@@ -264,9 +275,14 @@ bool receiveData() {
 
 bool sendPacket(const void * packet, uint8_t len) {
 
+  // calc crc
+  uint8_t crc = CRC8(packet, len);
+
   // struct to buffer
+  len += CRC_SIZE;
   uint8_t buf[len];
   memcpy (buf, packet, len);
+  buf[len - CRC_SIZE] = crc;
 
   bool sent = false;
 
@@ -276,13 +292,13 @@ bool sendPacket(const void * packet, uint8_t len) {
     int t = LoRa.write(buf, len);
     LoRa.endPacket();
 
-    sent = t > 0;
-
-    // LoRa.receive(sizeof(remPackage));
+    sent = t == len;
+    // LoRa.receive(sizeof(remPacket) + CRC_SIZE);
 
   #elif ARDUINO_SAMD_ZERO
 
     sent = radio.send(buf, len);
+
     if (sent) radio.waitPacketSent();
 
   #endif
@@ -292,36 +308,38 @@ bool sendPacket(const void * packet, uint8_t len) {
 
 bool sendData(uint8_t response) {
 
-  recvPacket.response = response;
-  recvPacket.chain = remPacket.crc;
-  recvPacket.crc = 77;
+  // send packet
+  switch (response) {
 
-  // Send ACK
-  if (sendPacket(&recvPacket, sizeof(recvPacket))) {
+  case ACK_ONLY: // no extra data to send
+    debug("Sending ack only");
+    telemetry.header.type = response;
+    telemetry.header.chain = remPacket.counter;
+    return sendPacket(&telemetry, sizeof(telemetry));
 
-    // send next packet
-    switch (response) {
+  case TELEMETRY:
+    debug("Sending telemetry");
+    telemetry.header.type = response;
+    telemetry.header.chain = remPacket.counter;
 
-    case ACK_ONLY: return true;
-
-    case TELEMETRY:
-      debug("Sending telemetry");
-      telemetry.chain = remPacket.crc;
-      if (sendPacket(&telemetry, sizeof(telemetry))) return true;
-      break;
-
-    case CONFIG:
-      debug("Sending board configuration");
-      boardConfig.chain = remPacket.crc;
-
-      if (sendPacket(&boardConfig, sizeof(boardConfig))) {
-        justStarted = false; // send config once
-        return true;
-      }
-
-      break;
+    if (sendPacket(&telemetry, sizeof(telemetry))) {
+      telemetryUpdated = false;
+      return true;
     }
+    break;
+
+  case CONFIG:
+    debug("Sending board configuration");
+    boardConfig.header.type = response;
+    boardConfig.header.chain = remPacket.counter;
+
+    if (sendPacket(&boardConfig, sizeof(boardConfig))) {
+      justStarted = false; // send config once
+      return true;
+    }
+    break;
   }
+
   return false;
 }
 
@@ -333,7 +351,7 @@ bool dataAvailable() {
 
   #elif ESP32
 
-    int packetSize = LoRa.parsePacket(sizeof(remPacket));
+    int packetSize = LoRa.parsePacket(sizeof(remPacket) + CRC_SIZE);
     return packetSize > 0;
 
   #endif
@@ -347,40 +365,51 @@ void radioExchange() {
   if ( dataAvailable() ) {
 
     // led on
-    // digitalWrite(LED, HIGH);
+    digitalWrite(LED, HIGH);
 
     if (receiveData()) {
 
       timeoutTimer = millis();
-      recievedData = true;
+      receivedData = true;
       connected = true;
 
-      debug( "New package: command: " + String(remPacket.command) + ", data: " + String(remPacket.data) );
+      debug( "New package: command " + String(remPacket.command) + ", data " + String(remPacket.data) + ", counter " + String(remPacket.counter) );
 
       // Send acknowledgement
       uint8_t response = ACK_ONLY;
 
       switch (remPacket.command) {
-        case SET_THROTTLE: // control VESC speed
-          setThrottle(remPacket.data);
+        case SET_THROTTLE:
+        case SET_CRUISE:
           if (telemetryUpdated) { response = TELEMETRY; }
           break;
-
-        case GET_CONFIG:
-          response = CONFIG;
-          break;
+        case GET_CONFIG: response = CONFIG; break;
       }
 
       // send config after power on
       if (justStarted) response = CONFIG;
 
+      // // allow remote to receive
+      // delay(5);
+
       if (sendData(response)) {
         // led on
-        // digitalWrite(LED, LOW);
-        debug("Sent response");
+        digitalWrite(LED, LOW);
+        // debug("Sent response");
       }
 
-    } else recievedData = false;
+      // control
+      switch (remPacket.command) {
+        case SET_THROTTLE: // control VESC speed
+          setThrottle(remPacket.data);
+          break;
+
+        case SET_CRUISE:
+          setCruise(remPacket.data);
+          break;
+      }
+
+    } else receivedData = false;
 
   }
   /* End listen for transmission */
@@ -487,6 +516,12 @@ void setThrottle(uint16_t value)
     //    digitalWrite(throttlePin, HIGH);
     //    delayMicroseconds(map(throttle, 0, 255, 1000, 2000) );
     //    digitalWrite(throttlePin, LOW);
+}
+
+void setCruise(uint8_t value) {
+
+    // todo: use COMM_SET_RPM
+
 }
 
 // void speedControl( uint16_t throttle , bool trigger )

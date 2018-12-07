@@ -18,6 +18,74 @@ void VescUart::setDebugPort(Stream* port)
 	debugPort = port;
 }
 
+void VescUart::setTimeout(int timeout)
+{
+	maxTimeout = timeout;
+}
+
+// no unpacking
+int VescUart::receiveUartMessageRaw(uint8_t * payloadReceived) {
+
+	// Messages <= 255 starts with "2", 2nd byte is length
+	// Messages > 255 starts with "3" 2nd and 3rd byte is length combined with 1st >>8 and then &0xFF
+
+	uint16_t counter = 0;
+	uint16_t endMessage = 256;
+	bool messageRead = false;
+	uint8_t messageReceived[256];
+
+	uint32_t timeout = millis() + maxTimeout; // Defining the timestamp for timeout (100ms before timeout)
+
+	while ( millis() < timeout && messageRead == false) {
+
+		while (serialPort->available()) {
+
+			payloadReceived[counter++] = serialPort->read();
+
+			if (counter == 2) {
+
+				switch (messageReceived[0])
+				{
+					case 2:
+						endMessage = payloadReceived[1] + 5; //Payload size + 2 for sice + 3 for SRC and End.
+					break;
+
+					case 3:
+						// ToDo: Add Message Handling > 255 (starting with 3)
+						if( debugPort != NULL ){
+							debugPort->println("Message is larger than 256 bytes - not supported");
+						}
+					break;
+
+					default:
+						if( debugPort != NULL ){
+							debugPort->println("Unvalid start bit");
+						}
+					break;
+				}
+			}
+
+			if (counter >= sizeof(payloadReceived)) {
+				break;
+			}
+
+			if (counter == endMessage && payloadReceived[endMessage - 1] == 3) {
+				payloadReceived[endMessage] = 0;
+				if (debugPort != NULL) {
+					debugPort->println("End of message reached!");
+				}
+				messageRead = true;
+				break; // Exit if end of message is reached, even if there is still more data in the buffer.
+			}
+		}
+	}
+	if(messageRead == false && debugPort != NULL ) {
+		debugPort->println("Timeout");
+	}
+
+	return counter;
+}
+
 int VescUart::receiveUartMessage(uint8_t * payloadReceived) {
 
 	// Messages <= 255 starts with "2", 2nd byte is length
@@ -28,8 +96,8 @@ int VescUart::receiveUartMessage(uint8_t * payloadReceived) {
 	bool messageRead = false;
 	uint8_t messageReceived[256];
 	uint16_t lenPayload = 0;
-	
-	uint32_t timeout = millis() + 100; // Defining the timestamp for timeout (100ms before timeout)
+
+	uint32_t timeout = millis() + maxTimeout; // Defining the timestamp for timeout (100ms before timeout)
 
 	while ( millis() < timeout && messageRead == false) {
 
