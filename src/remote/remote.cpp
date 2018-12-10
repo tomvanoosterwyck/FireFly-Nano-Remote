@@ -693,6 +693,15 @@ int readThrottlePosition() {
   return position;
 }
 
+double ReadVoltage(byte pin){
+  double reading = analogRead(pin); // Reference voltage is 3v3 so maximum reading is 3v3 = 4095 in range 0 to 4095
+  if(reading < 1 || reading >= 4095) return 0;
+
+  // return -0.000000000009824 * pow(reading,3) + 0.000000016557283 * pow(reading,2) + 0.000854596860691 * reading + 0.065440348345433;
+  return -0.000000000000016 * pow(reading,4) + 0.000000000118171 * pow(reading,3)- 0.000000301211691 * pow(reading,2)+ 0.001109019271794 * reading + 0.034143524634089;
+} // Added an improved polynomial, use either, comment out as required
+
+
 /*
    Calculate the remotes battery voltage
 */
@@ -710,17 +719,33 @@ float batteryLevelVolts() {
     return ( (float)total / (float)samples ) * 2 * refVoltage / 1024.0;
 
   #elif ESP32
+    // 4.2v  == polynomial 1.6 == 1823
+    // 1.6*2 = 3.2
+    total = analogRead(PIN_BATTERY);
+    return ReadVoltage(PIN_BATTERY) * 2.64;
 
-    adc1_config_width(ADC_WIDTH_BIT_10);
-    adc1_config_channel_atten(ADC1_GPIO35_CHANNEL, ADC_ATTEN_DB_11);
+    // ADC_6db provides an attenuation so that IN/OUT = 1 / 2 an input of 3 volts is reduced to 1.500 volts before ADC measurement
+    // analogSetAttenuation(ADC_6db);
+    // analogSetWidth(10);  // range of 0-1023
 
-    for ( uint8_t i = 0; i < samples; i++ )
-    {
-      total += adc1_get_raw(ADC1_GPIO35_CHANNEL);
-    }
-    // check!
-    return ( (float)total / (float)samples ) / 1024.0 * 2 * refVoltage * 1.1;
+    // debug("battery raw: " + String(ReadVoltage(PIN_BATTERY)));
 
+
+    // for (uint8_t i = 0; i < samples; i++) {
+    //   total += analogRead(PIN_BATTERY);
+    // }
+
+    // return ( (float)total / (float)samples ) * 0.00225;
+
+    // adc1_config_width(ADC_WIDTH_BIT_10);
+    // adc1_config_channel_atten(BATTERY_PROBE, ADC_ATTEN_DB_11);
+    //
+    // for ( uint8_t i = 0; i < samples; i++ )
+    // {
+    //   total += adc1_get_raw(BATTERY_PROBE);
+    // }
+    // // check!
+    // return ( (float)total / (float)samples ) / 1024.0 * 2 * refVoltage * 1.1;
   #endif
 
 }
