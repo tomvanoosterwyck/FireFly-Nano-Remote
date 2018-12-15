@@ -31,6 +31,16 @@ struct RemoteSettings {
   short maxHallValue = MAX_HALL;
 } settings;
 
+RemoteSettings tempSettings;
+
+// calibration
+enum calibration_stage {
+  CALIBRATE_CENTER,
+  CALIBRATE_MAX,
+  CALIBRATE_MIN,
+  CALIBRATE_STOP
+} calibrationStage;
+
 // Data structures
 ReceiverPacket recvPacket;
 RemotePacket remPacket;
@@ -42,13 +52,21 @@ bool needConfig = true; // query board confirmation on start
 float signalStrength;
 float lastRssi;
 
+// Defining struct to hold stats
+struct stats {
+  float maxSpeed;
+  long maxRpm;
+  float minVoltage;
+  float maxVoltage;
+};
+
 enum ui_page {
   PAGE_MAIN,  // speed, battery, distance
   PAGE_EXT,   // current / settings
   PAGE_MENU,
+  PAGE_MAX,
   PAGE_DEBUG,
-  PAGE_MAX
-} page = PAGE_MAIN;
+} page = PAGE_MENU;
 
 // speed control
 enum control_mode {
@@ -56,7 +74,8 @@ enum control_mode {
   MODE_NORMAL,
   MODE_CRUISE,
   MODE_ENDLESS,
-  MODE_STOP
+  MODE_STOP,
+  MODE_MENU
 } controlMode = MODE_IDLE;
 
 // Battery monitoring
@@ -72,6 +91,47 @@ float throttle;
 unsigned long lastSignalBlink;
 bool signalBlink = false;
 byte counter = 0;
+
+unsigned long lastInteraction; // last time controls were used
+unsigned long stopTime;
+bool stopped = true;
+
+// menu
+enum menu_page {
+  MENU_MAIN,
+  MENU_SUB,
+  MENU_ITEM,
+} menuPage = MENU_MAIN;
+
+
+const byte subMenus = 6;
+const byte mainMenus = 3;
+
+
+String MENUS[mainMenus][subMenus] = {
+    { "Info", "Debug", "", "", "", "" },
+    { "Remote", "Calibrate", "Pair", "Sleep timer", "", "" },
+    { "Board", "Max Speed", "Range", "Cells", "Bat type", "Motor poles" }
+  };
+
+enum menu_main { MENU_INFO, MENU_REMOTE, MENU_BOARD };
+enum menu_info { INFO_DEBUG };
+enum menu_remote { REMOTE_CALIBRATE, REMOTE_PAIR, REMOTE_SLEEP_TIMER };
+
+float currentMenu = 0;
+int subMenu = 0;
+int subMenuItem = 0;
+
+// set idle mode after using menu
+bool menuWasUsed = false;
+
+// const int BATTERY_CELLS = 10;
+// const int BATTERY_TYPE = 0;     // 0: LI-ION | 1: LIPO
+// const int MOTOR_POLES = 22;
+// const int WHEEL_DIAMETER = 90;
+// const int WHEEL_PULLEY = 1;
+// const int MOTOR_PULLEY = 1;
+
 
 // Button constants
 const int CLICK     = 1;
@@ -160,6 +220,7 @@ void radioLoop();
 bool inRange(short val, short minimum, short maximum);
 void isr();
 bool isShuttingDown();
+void loadSettings();
 void loop();
 bool pressed(int button);
 int readThrottlePosition();
@@ -169,7 +230,6 @@ void reset();
 bool responseAvailable(uint8_t size);
 bool safeCruiseSpeed();
 bool sendData();
-void setDefaults();
 void setup();
 void sleep();
 float speed();

@@ -17,6 +17,7 @@
 
 #define HAS_DISPLAY   // OLED-Display on board
 #define DISPLAY_ROTATION  3
+#define DISPLAY_ROTATION_90 0
 
 // Pins for I2C interface of OLED Display
 #define DISPLAY_SDA   4

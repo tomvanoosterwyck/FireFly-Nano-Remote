@@ -103,7 +103,7 @@ void setup() {
       0);  /* Core where the task should run */
   #endif
 
-  debug("** Esk8-remote receiver **");
+  debug("** Esk8-remote transmitter **");
 
 }
 
@@ -139,82 +139,78 @@ void radioLoop() {
   transmitToReceiver();
 }
 
+void keepAlive() {
+  lastInteraction = millis();
+}
+
 void calculateThrottle()
 {
   int position = readThrottlePosition();
 
-  // braking
-  if (position <= default_throttle) {
-    throttle = position;
-    return;
-  }
-
-  // simple deadman switch
-  throttle = triggerActive() ? position : default_throttle;
-  return;
-
-
-//  if (!connected)
-
   switch (controlMode) {
 
   case MODE_IDLE: //
-
-    throttle = default_throttle;
-
-    // dead man switch activated
-    if (triggerActive()) {
-      controlMode = MODE_NORMAL;
-      throttle = position;
-
-      debug("dead man switch activated");
+    if (position < default_throttle) { // breaking
+      throttle = position; // brakes always enabled
+    } else { // throttle >= 0
+      if (triggerActive()) {
+        // dead man switch activated
+        controlMode = MODE_NORMAL;
+        throttle = position;
+        debug("dead man switch activated");
+      } else {
+        // locked, ignore
+        throttle = default_throttle;
+      }
     }
+    // sleep timer
+    if (stopped && millis() - lastInteraction > REMOTE_SLEEP_TIMEOUT * 1000) sleep();
     break;
 
   case MODE_NORMAL:
-
     throttle = position;
-
-    // if (triggerActive() && safeCruiseSpeed()) {
-    //   cruiseSpeed = speed();
-    //   cruiseThrottle = throttle;
-    //   controlMode = MODE_CRUISE;
-    //
-    // }
     debug("MODE_NORMAL");
+
+    // activate cruise mode?
+    if (triggerActive() && throttle == default_throttle && speed() > 3) {
+      cruiseSpeed = speed();
+      // cruiseThrottle = throttle;
+      controlMode = MODE_CRUISE;
+    }
+
+    // activate deadman switch
+    if (stopped && throttle == default_throttle) { // idle
+      if (millis() - stopTime > REMOTE_LOCK_TIMEOUT * 1000) {
+        // lock remote
+        controlMode = MODE_IDLE;
+        debug("locked");
+      }
+    }
     break;
 
-  case MODE_STOP: // reset required
+  case MODE_MENU: // navigate menu
+    // idle
+    throttle = default_throttle;
 
-    throttle = default_throttle; // keep cruise mode
+    if (position != default_throttle) {
+      menuWasUsed = true;
+    }
     break;
 
-  case MODE_ENDLESS:
-    break;
+  case MODE_ENDLESS: break;
 
   case MODE_CRUISE:
-
-    // if (triggerActive()) {
-    //
-    //   if (position == default_throttle) { // cruising
-    //     // adjust throttle
-    //     throttle = cruiseControl();
-    //
-    //   } else {
-    //     throttle = position; // keep cruise mode
-    //   }
-    //
-    // } else { // trigger released
-    //
-    //   controlMode = MODE_NORMAL;
-    //   throttle = position;
-    //   debug("trigger released");
-    //
-    // }
+    // exit mode if trigger released or throttle changed
+    if (!triggerActive() || position != default_throttle) {
+      controlMode = MODE_NORMAL;
+      throttle = position;
+      debug("trigger released");
+    }
     break;
-
   }
 
+  // wheel was used
+  if (position != default_throttle) keepAlive();
 }
 
 // int cruiseControl() {
@@ -236,20 +232,33 @@ void isr() { } // Interrupt Service Routine
 void handleButtons() {
 
   switch (checkButton()) {
-    case CLICK:
-      // todo: menu
-      page = static_cast<ui_page>((page + 1) % PAGE_MAX);
 
-      // skip menu
-      debug("click");
+  case CLICK:
+    keepAlive();
+    // in menu
+    if (page == PAGE_MENU) {
 
-      break;
-    case HOLD: // start shutdown
-      vibrate(100);
-      break;
-    case LONG_HOLD: // shutdown confirmed
-      sleep();
-      return;
+      if (menuPage != MENU_MAIN) {
+        menuPage = MENU_MAIN; // go back
+        display.setRotation(DISPLAY_ROTATION); // back to vertical
+        calibrationStage = CALIBRATE_CENTER;
+        return;
+      }
+      // exit menu
+      controlMode = menuWasUsed ? MODE_IDLE : MODE_NORMAL;
+    }
+
+    // switch pages
+    page = static_cast<ui_page>((page + 1) % PAGE_MAX);
+    break;
+
+  case HOLD: // start shutdown
+    vibrate(100);
+    break;
+
+  case LONG_HOLD: // shutdown confirmed
+    sleep();
+    return;
   }
 
 }
@@ -316,6 +325,8 @@ void sleep()
 
   // in case of board change
   needConfig = true;
+
+  keepAlive();
 }
 
 /*
@@ -427,7 +438,30 @@ bool inRange(short val, short minimum, short maximum) {
    Return true if trigger is activated, false otherwice
 */
 bool triggerActive() {
-  return digitalRead(PIN_TRIGGER) == LOW;
+  bool active = digitalRead(PIN_TRIGGER) == LOW;
+  if (active) keepAlive();
+  return active;
+}
+
+void onTelemetryChanged() {
+
+  switch (controlMode) {
+
+  case MODE_NORMAL: //
+  case MODE_IDLE:
+    if (telemetry.getSpeed() != 0 || throttle != default_throttle)  {
+      // moving
+      stopped = false;
+    } else {
+      if (!stopped) { // just stopped
+        stopTime = millis();
+        stopped = true;
+        debug("stopped");
+      }
+    }
+    break;
+  }
+
 }
 
 /*
@@ -464,17 +498,16 @@ bool sendData() {
 
   bool sent = false;
 
-  debug("sending command: " + String(remPacket.command)
-       + ", counter: " + String(remPacket.counter));
+  // debug("sending command: " + String(remPacket.command)
+  //       + ", data: " + String(remPacket.data)
+  //       + ", counter: " + String(remPacket.counter)
+  //    );
 
   #ifdef ESP32
 
     LoRa.beginPacket(sz);
-
     int t = 0;
-
     t = LoRa.write(buf, sz);
-
     LoRa.endPacket();
 
     // LoRa.receive(PACKET_SIZE + CRC_SIZE);
@@ -509,17 +542,20 @@ bool receiveData() {
   // response type
   switch (recvPacket.type) {
     case ACK_ONLY:
-      debug("Ack: chain " + String(recvPacket.chain));
+      // debug("Ack: chain " + String(recvPacket.chain));
       return true;
 
     case TELEMETRY:
       memcpy(&telemetry, buf, PACKET_SIZE);
 
-      debug("Telemetry: battery " + String(telemetry.getVoltage())
-        + ", speed " + String(telemetry.getSpeed())
-        + ", dist " + String(telemetry.getDistance())
-        + ", chain " + String(telemetry.header.chain)
-      );
+      // debug("Telemetry: battery " + String(telemetry.getVoltage())
+      //   + ", speed " + String(telemetry.getSpeed())
+      //   + ", rpm " + String(telemetry.rpm)
+      //   + ", chain " + String(telemetry.header.chain)
+      // );
+
+      onTelemetryChanged();
+
       return true;
 
     case CONFIG:
@@ -606,17 +642,12 @@ void prepatePacket() {
     switch (controlMode) {
     case MODE_CRUISE: // Set cruise mode
       remPacket.command = SET_CRUISE;
-      remPacket.data = round(throttle);
+      remPacket.data = round(cruiseSpeed);
       break;
+    case MODE_IDLE:
     case MODE_NORMAL: // Send throttle to the receiver.
       remPacket.command = SET_THROTTLE;
       remPacket.data = round(throttle);
-      break;
-    case MODE_IDLE:
-      // Idle mode. Send throttle to the receiver.
-      remPacket.command = SET_THROTTLE;
-      remPacket.data = default_throttle;
-
       break;
     }
   }
@@ -835,7 +866,7 @@ void updateMainDisplay()
     switch (page) {
     case PAGE_MAIN:
       drawBatteryLevel(); // 2 ms
-      // drawMode();
+      drawMode();
       drawSignal(); // 1 ms
       drawMainPage();
       break;
@@ -864,6 +895,8 @@ void drawShutdownScreen()
 
 void drawConnectingScreen()
 {
+  display.setRotation(DISPLAY_ROTATION);
+
   int y = 8;
 
   display.drawXBitmap((64-24)/2, y, logo, 24, 24, WHITE);
@@ -913,12 +946,192 @@ void drawThrottle() {
   }
 }
 
+void calibrateScreen() {
+
+  int padding = 10;
+  int tick = 5;
+  int w = display.width() - padding*2;
+
+  int position = readThrottlePosition();
+
+  switch (calibrationStage) {
+  case CALIBRATE_CENTER:
+
+    tempSettings.centerHallValue = hallValue;
+    tempSettings.minHallValue = hallValue - 100;
+    tempSettings.maxHallValue = hallValue + 100;
+    calibrationStage = CALIBRATE_MAX;
+    break;
+
+  case CALIBRATE_MAX:
+    if (hallValue > tempSettings.maxHallValue) {
+      tempSettings.maxHallValue = hallValue;
+    } else if (hallValue < tempSettings.minHallValue) {
+      calibrationStage = CALIBRATE_MIN;
+    }
+    break;
+
+  case CALIBRATE_MIN:
+    if (hallValue < tempSettings.minHallValue) {
+      tempSettings.minHallValue = hallValue;
+    } else if (hallValue == tempSettings.centerHallValue) {
+      calibrationStage = CALIBRATE_STOP;
+    }
+    break;
+
+  case CALIBRATE_STOP:
+
+    if (pressed(PIN_TRIGGER)) {
+      // apply calibration values
+      settings.centerHallValue = tempSettings.centerHallValue;
+      settings.minHallValue = tempSettings.minHallValue;
+      settings.maxHallValue = tempSettings.maxHallValue;
+
+      display.setRotation(DISPLAY_ROTATION);
+      menuPage = MENU_MAIN;
+      currentMenu = 0;
+
+      saveSettings();
+    }
+
+  }
+
+  display.setRotation(DISPLAY_ROTATION_90);
+
+  int center = map(tempSettings.centerHallValue, tempSettings.minHallValue, tempSettings.maxHallValue, display.width() - padding, padding);
+
+  int y = 8;
+  drawString(String(tempSettings.maxHallValue), 0, y, fontDesc);
+  drawString(String(tempSettings.centerHallValue), center-10, y, fontDesc);
+  drawString(String(tempSettings.minHallValue), 128-20, y, fontDesc);
+
+  // line
+  y = 16;
+  drawHLine(padding, y, w);
+  // ticks
+  drawVLine(padding, y-tick, tick);
+  drawVLine(center, y-tick, tick);
+  drawVLine(w + padding, y-tick, tick);
+
+  // current throttle position
+  int th = map(hallValue, tempSettings.minHallValue, tempSettings.maxHallValue, display.width() - padding, padding);
+  drawVLine(constrain(th, 0, display.width()-1), y, tick);
+
+  y = 32;
+  drawString(String(hallValue), constrain(th-10, 0, w), y, fontDesc); // min
+
+  y = 48;
+  switch (calibrationStage) {
+  case CALIBRATE_MAX:
+  case CALIBRATE_MIN:
+    drawString("Press throttle fully", -1, y, fontDesc);
+    drawString("forward and backward", -1, y+14, fontDesc);
+    break;
+  case CALIBRATE_STOP:
+    drawString("Calibration completed", -1, y, fontDesc);
+    drawString("Trigger: Save", -1, y+14, fontDesc);
+  }
+
+}
+
 void drawSettingsMenu() {
 
   //  display.drawFrame(0,0,64,128);
-
   int y = 10;
-  drawString("Menu", -1, y, fontDesc);
+
+  // check speed
+  if (controlMode != MODE_MENU) {
+
+    if (telemetry.getSpeed() != 0) {
+      drawString("Stop", -1, y=50, fontDesc);
+      drawString("to use", -1, y+=14, fontDesc);
+      drawString("menu", -1, y+=14, fontDesc);
+      return;
+    } else { // enable menu
+      controlMode = MODE_MENU;
+    }
+  }
+
+  // wheel = up/down
+  int position = readThrottlePosition();
+
+  // todo: wheel control
+  if (position < default_throttle - 30) {
+    if (currentMenu < subMenus-1) currentMenu += 0.25;
+  }
+  if (position > default_throttle + 30) {
+    if (currentMenu > 0) currentMenu -= 0.25;
+  }
+
+  switch (menuPage) {
+
+  case MENU_MAIN:
+
+    drawString("- Menu -", -1, y, fontDesc);
+
+    y += 20;
+    for (int i = 0; i < mainMenus; i++) {
+      drawString(MENUS[i][0], -1, y, fontDesc);
+      // draw cursor
+      if (i == round(currentMenu)) drawFrame(0, y-10, 64, 14);
+      y += 16;
+    }
+
+    if (pressed(PIN_TRIGGER)) {
+      menuPage = MENU_SUB;
+      subMenu = round(currentMenu);
+      currentMenu = 0;
+      //= static_cast<menu_page>(round(currentMenu) + 1);
+      waitRelease(PIN_TRIGGER);
+    }
+    break;
+
+  case MENU_SUB:
+    drawString(MENUS[subMenu][0], -1, y, fontDesc);
+    y += 20;
+    for (int i = 0; i < subMenus-1; i++) {
+      drawString(MENUS[subMenu][i+1], -1, y, fontDesc);
+      // draw cursor
+      if (i == round(currentMenu)) drawFrame(0, y-10, 64, 14);
+      y += 16;
+    }
+
+    if (pressed(PIN_TRIGGER)) {
+      menuPage = MENU_ITEM;
+      subMenuItem = round(currentMenu);
+      waitRelease(PIN_TRIGGER);
+
+
+    }
+
+    break;
+
+  case MENU_ITEM:
+
+    switch (subMenu) {
+    case MENU_INFO:
+      switch (subMenuItem) {
+        case INFO_DEBUG: drawDebugPage(); break;
+      }
+      break;
+
+    case MENU_REMOTE:
+      switch (subMenuItem) {
+      case REMOTE_CALIBRATE: calibrateScreen(); break;
+      }
+      break;
+
+    case MENU_BOARD:
+
+      break;
+
+    }
+
+
+    break;
+
+
+  }
 
 }
 
@@ -955,7 +1168,7 @@ void drawString(String string, int x, int y, const GFXfont *font) {
   display.setFont(font);
 
   if (x == -1) {
-    x = (64 - getStringWidth(string)) / 2;
+    x = (display.width() - getStringWidth(string)) / 2;
   }
 
   display.setCursor(x, y);
@@ -1036,7 +1249,7 @@ void drawExtPage() {
 
   // 1 - throttle
   value = throttle;  //telemetry.getInputCurrent
-  bars = map(throttle, 0, 255, -10, 10);
+  bars = map(throttle, 0, 254, -10, 10);
   drawBars(x, y, bars, "T", String(bars));
 
   // motor current

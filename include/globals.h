@@ -28,11 +28,11 @@ const uint32_t boardAddress = 0xc89cb368;
 // UART
 const int UART_SPEED = 115200;
 const uint16_t uartPullInterval = 150;
+const int UART_TIMEOUT = 10; // 10ms for 115200 bauds, 100ms for 9600 bauds
+const int REMOTE_RX_TIMEOUT = 20; // ms
 
-// 10ms for 115200 bauds, 100ms for 9600 bauds
-const int UART_TIMEOUT = 10;
-
-const int REMOTE_RX_TIMEOUT = 20;
+const int REMOTE_LOCK_TIMEOUT = 10; // seconds to lock throttle when idle
+const int REMOTE_SLEEP_TIMEOUT = 180; // seconds to go to sleep mode
 
 // VESC current, for graphs only
 const int MOTOR_MIN = -30;
@@ -59,10 +59,9 @@ struct RemotePacket {
   uint8_t  version;  // 1
   uint8_t  command;	 // Throttle | Light | Settings
   uint8_t  data;     // e.g. throttle value
-  uint8_t  counter;  // >> rand()
-  // --------------  // keep 4 byte alignment!
+  uint8_t  counter;
+  // --------------
 };
-
 
 
 // commands
@@ -75,8 +74,8 @@ const uint8_t PAIR_REQUEST  = 4;
 // Receiver > remote  3 bytes
 struct ReceiverPacket {
   uint8_t type;
-  uint8_t chain;	      // CRC from RemotePacket
-  uint8_t r1;
+  uint8_t chain;	// CRC from RemotePacket
+  uint8_t mode;   // Mode: Pairing, BT, ...
   uint8_t r2;
 };
 
@@ -86,19 +85,39 @@ const uint8_t TELEMETRY = 2;
 const uint8_t CONFIG    = 3;
 const uint8_t PAIRING   = 4;
 
+struct AckPacket {
+  ReceiverPacket header;
+  // --------------  // keep 4 byte alignment!
+  uint8_t r0;
+  uint8_t r1;        // UART delay?
+  uint16_t r2;
+  // --------------
+  uint16_t r3;       // temperature?
+  uint16_t r4;
+  // --------------
+  int16_t r5;
+  int16_t r6;
+  // --------------
+};
+
+const int PACKET_SIZE = sizeof(AckPacket);
+const int CRC_SIZE = 1;
+
 // New VESC values 12 + 3
 struct TelemetryPacket {
   ReceiverPacket header;
-  // --------------  // keep 4 byte alignment!
-  uint16_t voltage;       // volts * 100
-  uint16_t speed;         // km/h * 100
-  // --------------  // keep 4 byte alignment!
-  uint16_t distance;      // km * 100 - 10m accuracy
-  int16_t motorCurrent;  // motor amps * 100
-  // --------------  // keep 4 byte alignment!
-  int16_t inputCurrent;  // battery amps * 100
-  int16_t reserved;
-  // --------------  // keep 4 byte alignment!
+  // -----------------  // keep 4 byte alignment!
+  uint16_t speed;       // km/h * 100
+  uint8_t tempMotor;
+  uint8_t tempFET;
+  // -----------------
+  uint16_t voltage;     // volts * 100
+  uint16_t distance;    // km * 100 - 10m accuracy
+  // -----------------
+  int16_t motorCurrent; // motor amps * 100
+  int16_t inputCurrent; // battery amps * 100
+  // -----------------
+
 
   uint16_t f2w(float f) { return f * 100; } // pack float
   float w2f(uint16_t w) { return float(w) / 100; }; // unpack float
@@ -122,26 +141,23 @@ struct TelemetryPacket {
   void setInputCurrent(float f) { inputCurrent = f2wi(f); }
 };
 
-const int PACKET_SIZE = sizeof(TelemetryPacket);
-const int CRC_SIZE = 1;
-
 // board setting
 struct ConfigPacket {
   ReceiverPacket header;
-  // --------------  // keep 4 byte alignment!
+  // -------------------  // keep 4 byte alignment!
   uint8_t  maxSpeed;	    // m/s
   uint8_t  maxRange;      // km
   uint8_t  batteryCells;
   uint8_t  batteryType;   // 0: Li-ion | 1: LiPo
-  // --------------  // keep 4 byte alignment!
+  // -------------------
   uint8_t  motorPoles;
   uint8_t  wheelDiameter;
   uint8_t  wheelPulley;
   uint8_t  motorPulley;
-  // --------------  // keep 4 byte alignment!
+  // -------------------
   int16_t r1;  // battery amps * 100
   int16_t r2;
-
+  // -------------------
   float getMaxSpeed() { return (maxSpeed) / 100; }
   void setMaxSpeed(float f) { maxSpeed = f * 100; }
 };
