@@ -22,49 +22,19 @@ Adafruit_SSD1306 display(DISPLAY_RST);
   // Singleton instance of the radio driver
   RH_RF69 radio(RF_CS, RF_DI0);
 
+  FlashStorage(flash_settings, RemoteSettings);
+
+#elif ESP32
+  Preferences preferences; // https://github.com/espressif/arduino-esp32/tree/master/libraries/Preferences
 #endif
 
 #include "radio.h"
 
-// Defining struct to hold stats
-struct stats {
-  float maxSpeed;
-  long maxRpm;
-  float minVoltage;
-  float maxVoltage;
-};
-
-
-// const char titles[numOfSettings][17] = {
-//   "Trigger use", "Battery type", "Battery cells", "Motor poles", "Motor pulley",
-//   "Wheel pulley", "Wheel diameter", "Control mode", "Throttle min", "Throttle center",
-//   "Throttle max", "Generate address", "Reset address", "Settings"
-// };
-
-// const uint8_t unitIdentifier[numOfSettings]  = {0, 0, 1, 0, 2, 2, 3, 0, 0, 0, 0, 0, 0, 0};
-// const uint8_t valueIdentifier[numOfSettings] = {1, 2, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0};
-
-// const char stringValues[3][3][13] = {
-//   {"Killswitch", "Cruise", ""},
-//   {"Li-ion", "LiPo", ""},
-//   {"PPM", "PPM and UART", "UART only"},
-// };
-//
-// const char settingUnits[3][3] = {"S", "T", "mm"};
-// const char dataSuffix[3][4] = {"KMH", "KM", "%"};
-// const char dataPrefix[3][9] = {"SPEED", "DISTANCE", "BATTERY"};
-
-//
 bool power = true;
 
 const uint8_t hallNoiseMargin = 8;
 byte hallCenterMargin = 0;
 const uint8_t hallMenuMargin = 100;
-uint8_t throttlePosition;
-
-#define TOP 0
-#define MIDDLE 1
-#define BOTTOM 2
 
 // Defining variables for radio communication
 unsigned long lastTransmission;
@@ -95,7 +65,7 @@ void setup() {
 
   // while (!Serial) { ; }
 
-  setDefaults();
+  loadSettings();
 
   #ifdef PIN_VIBRO
     pinMode(PIN_VIBRO, OUTPUT);
@@ -380,18 +350,71 @@ bool pressed(int button) {
   return digitalRead(button) == LOW;
 }
 
-/*
-   Save the default settings in the EEPROM
-*/
-void setDefaults() {
+void waitRelease(int button) {
+  while (true) {
+    if (!pressed(button)) return;
+  }
+}
 
-  remPacket.version = VERSION;
+void loadSettings() {
 
-  settings.minHallValue = MIN_HALL;
-  settings.centerHallValue = CENTER_HALL;
-  settings.maxHallValue = MAX_HALL;
+  #ifdef ESP32
+    // esp_err_t err = nvs_flash_init();
+    // if (err == ESP_ERR_NVS_NO_FREE_PAGES) {
+    //   // NVS partition was truncated and needs to be erased
+    //   // Retry nvs_flash_init
+    //   ESP_ERROR_CHECK(nvs_flash_erase());
+    //   err = nvs_flash_init();
+    //   ESP_ERROR_CHECK(err);
+    // }
+
+    preferences.begin("FireFlyNano", false);
+
+    remPacket.version = VERSION;
+
+    settings.minHallValue = preferences.getShort("MIN_HALL",  MIN_HALL);
+    settings.centerHallValue = preferences.getShort("CENTER_HALL", CENTER_HALL);
+    settings.maxHallValue = preferences.getShort("MAX_HALL", MAX_HALL);
+
+    debug("MIN_HALL: " + String(settings.minHallValue));
+
+    preferences.putShort("MIN_HALL",  11);
+
+  #elif ARDUINO_SAMD_ZERO
+
+    settings = flash_settings.read();
+
+    debug("MIN_HALL: " + String(settings.minHallValue));
+
+    if (settings.valid == false) {
+      settings.minHallValue = MIN_HALL;
+      settings.centerHallValue = CENTER_HALL;
+      settings.maxHallValue = MAX_HALL;
+      debug("defaults loaded");
+    }
+
+  #endif
 
 }
+
+// only after chamge
+void saveSettings() {
+
+  #ifdef ESP32
+
+    preferences.putShort("MIN_HALL",  settings.minHallValue);
+    preferences.getShort("CENTER_HALL", settings.centerHallValue);
+    preferences.getShort("MAX_HALL", settings.maxHallValue);
+
+  #elif ARDUINO_SAMD_ZERO
+    debug("saving settings...");
+
+    settings.valid = true;
+    flash_settings.write(settings);
+
+  #endif
+}
+
 
 /*
    Check if an integer is within a min and max value

@@ -3,24 +3,32 @@
 #include "CPU.h"
 #include "globals.h"
 #include "utils.h"
-// #include <Preferences.h>
 
 #include <Adafruit_GFX.h>
 #include "Adafruit_SSD1306.h"
 
 #ifdef ARDUINO_SAMD_ZERO
   #include <RH_RF69.h>
+  #include <FlashStorage.h>
+
 #elif ESP32
   #include <LoRa.h>
   #include <driver/adc.h>
   #include <esp_sleep.h>
   #include <esp_deep_sleep.h>
+
+  // flash
+  #include <nvs.h>
+  #include <nvs_flash.h>
+  #include <Preferences.h>
+
 #endif
 
 struct RemoteSettings {
-  short minHallValue; 		// 8
-  short centerHallValue;	// 9
-  short maxHallValue; 		// 10
+  bool valid;
+  short minHallValue = MIN_HALL;
+  short centerHallValue = CENTER_HALL;
+  short maxHallValue = MAX_HALL;
 } settings;
 
 // Data structures
