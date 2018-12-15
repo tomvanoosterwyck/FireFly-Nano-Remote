@@ -507,7 +507,7 @@ void setThrottle(uint16_t value)
     throttle = value;
 
     // UART
-    UART.nunchuck.valueY =  value;
+    UART.nunchuck.valueY = value;
     UART.nunchuck.upperButton = false;
     UART.nunchuck.lowerButton = false;
     UART.setNunchuckValues();
@@ -518,10 +518,13 @@ void setThrottle(uint16_t value)
     //    digitalWrite(throttlePin, LOW);
 }
 
-void setCruise(uint8_t value) {
+void setCruise(uint8_t speed) {
 
-    // todo: use COMM_SET_RPM
-
+    // UART
+    UART.nunchuck.valueY = 127;
+    UART.nunchuck.upperButton = false;
+    UART.nunchuck.lowerButton = true;
+    UART.setNunchuckValues();
 }
 
 // void speedControl( uint16_t throttle , bool trigger )
@@ -605,6 +608,8 @@ void getUartData()
       telemetry.setDistance(tach2dist(UART.data.tachometerAbs));
       telemetry.setMotorCurrent(UART.data.avgMotorCurrent);
       telemetry.setInputCurrent(UART.data.avgInputCurrent);
+      telemetry.tempFET = round(UART.data.tempFET);
+      telemetry.tempMotor = round(UART.data.tempMotor);
 
       lastDelay = millis() - lastUartPull;
       telemetryUpdated = true;

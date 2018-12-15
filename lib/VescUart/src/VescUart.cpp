@@ -252,16 +252,26 @@ bool VescUart::processReadPacket(uint8_t * message) {
 	switch (packetId){
 		case COMM_GET_VALUES: // Structure defined here: https://github.com/vedderb/bldc/blob/43c3bbaf91f5052a35b75c2ff17b5fe99fad94d1/commands.c#L164
 
-			ind = 4; // Skip the first 4 bytes 
+			data.tempFET   = buffer_get_float16(message, 10.0, &ind); // buffer_append_float16(send_buffer, mc_interface_temp_fet_filtered(), 1e1, &ind);
+			data.tempMotor = buffer_get_float16(message, 10.0, &ind); // buffer_append_float16(send_buffer, mc_interface_temp_motor_filtered(), 1e1, &ind);
+
 			data.avgMotorCurrent 	= buffer_get_float32(message, 100.0, &ind);
 			data.avgInputCurrent 	= buffer_get_float32(message, 100.0, &ind);
+
 			ind += 8; // Skip the next 8 bytes
+			// buffer_append_float32(send_buffer, mc_interface_read_reset_avg_id(), 1e2, &ind);
+			// buffer_append_float32(send_buffer, mc_interface_read_reset_avg_iq(), 1e2, &ind);
+
 			data.dutyCycleNow 		= buffer_get_float16(message, 1000.0, &ind);
 			data.rpm 				= buffer_get_int32(message, &ind);
 			data.inpVoltage 		= buffer_get_float16(message, 10.0, &ind);
 			data.ampHours 			= buffer_get_float32(message, 10000.0, &ind);
 			data.ampHoursCharged 	= buffer_get_float32(message, 10000.0, &ind);
-			ind += 8; // Skip the next 8 bytes 
+
+			ind += 8; // Skip the next 8 bytes
+			// buffer_append_float32(send_buffer, mc_interface_get_watt_hours(false), 1e4, &ind);
+			// buffer_append_float32(send_buffer, mc_interface_get_watt_hours_charged(false), 1e4, &ind);
+
 			data.tachometer 		= buffer_get_int32(message, &ind);
 			data.tachometerAbs 		= buffer_get_int32(message, &ind);
 			return true;
