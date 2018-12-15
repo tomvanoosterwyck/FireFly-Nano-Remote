@@ -30,36 +30,6 @@ Adafruit_SSD1306 display(DISPLAY_RST);
 
 #include "radio.h"
 
-bool power = true;
-
-const uint8_t hallNoiseMargin = 8;
-byte hallCenterMargin = 0;
-const uint8_t hallMenuMargin = 100;
-
-// Defining variables for radio communication
-unsigned long lastTransmission;
-bool connected = false;
-short failCount;
-
-unsigned long lastMarker;
-unsigned long lastDelay;
-
-// Defining variables for Settings menu
-bool changeSettings     = false; // Global flag for whether or not one is editing the settings
-//bool changeThisSetting  = false;
-//bool settingsLoopFlag   = false;
-bool triggerFlag = false;
-bool settingScrollFlag  = false;
-bool settingsChangeValueFlag = false;
-//unsigned short settingWaitDelay = 500;
-//unsigned short settingScrollWait = 800;
-//unsigned long settingChangeMillis = 0;
-uint8_t shutdownReq = 0;
-
-float cruiseSpeed = 0;
-int cruiseStartThrottle;
-int cruiseThrottle;
-
 void setup() {
   Serial.begin(115200);
 
@@ -72,6 +42,12 @@ void setup() {
   #endif
   #ifdef PIN_BATTERY
     pinMode(PIN_BATTERY, INPUT);
+    #ifdef ESP32
+      pinMode(VEXT, OUTPUT);
+      digitalWrite(VEXT, LOW);
+      adcAttachPin(PIN_BATTERY);
+      // analogSetClockDiv(255);
+    #endif
   #endif
 
   pinMode(PIN_TRIGGER, INPUT_PULLUP);
@@ -240,6 +216,7 @@ void handleButtons() {
 
       if (menuPage != MENU_MAIN) {
         menuPage = MENU_MAIN; // go back
+        currentMenu = 0;
         display.setRotation(DISPLAY_ROTATION); // back to vertical
         calibrationStage = CALIBRATE_CENTER;
         return;
@@ -585,7 +562,8 @@ bool receivePacket(uint8_t* buf, uint8_t len) {
     if (!radio.recv(buf, &len)) return false;
 
     // signal
-    signalStrength = constrain(map(radio.lastRssi(), -77, -35, 0, 100), 0, 100);
+    lastRssi = radio.lastRssi();
+    signalStrength = constrain(map(lastRssi, -77, -35, 0, 100), 0, 100);
 
   #elif ESP32
     int i = 0;
@@ -648,6 +626,10 @@ void prepatePacket() {
     case MODE_NORMAL: // Send throttle to the receiver.
       remPacket.command = SET_THROTTLE;
       remPacket.data = round(throttle);
+      break;
+    case MODE_MENU:
+      remPacket.command = SET_THROTTLE;
+      remPacket.data = default_throttle;
       break;
     }
   }
@@ -1081,13 +1063,13 @@ void drawSettingsMenu() {
       menuPage = MENU_SUB;
       subMenu = round(currentMenu);
       currentMenu = 0;
-      //= static_cast<menu_page>(round(currentMenu) + 1);
       waitRelease(PIN_TRIGGER);
     }
     break;
 
   case MENU_SUB:
-    drawString(MENUS[subMenu][0], -1, y, fontDesc);
+    // header
+    drawString("- " + MENUS[subMenu][0] + " -", -1, y, fontDesc);
     y += 20;
     for (int i = 0; i < subMenus-1; i++) {
       drawString(MENUS[subMenu][i+1], -1, y, fontDesc);
@@ -1150,7 +1132,7 @@ void drawDebugPage() {
   if (connected) drawStringCenter(String(lastRssi, 0), " db", y);
 
   y += 25;
-  drawStringCenter(String(throttle, 0), String(hallValue), y);
+  drawStringCenter(String(readThrottlePosition()), String(hallValue), y);
 
 }
 

@@ -11,19 +11,6 @@
 */
 const uint32_t boardAddress = 0xc89cb368;
 
-// default remote configuration
-#ifdef ESP32
-  const int MIN_HALL = 400;
-  const int CENTER_HALL = 740;
-  const int MAX_HALL = 1023;
-#endif
-#ifdef ARDUINO_SAMD_ZERO // Feather M0
-  const int MIN_HALL = 18;
-  const int CENTER_HALL = 325;
-  const int MAX_HALL = 629;
-#endif
-
-// #define RECEIVER_SCREEN 1
 
 // UART
 const int UART_SPEED = 115200;

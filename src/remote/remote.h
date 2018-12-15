@@ -8,10 +8,16 @@
 #include "Adafruit_SSD1306.h"
 
 #ifdef ARDUINO_SAMD_ZERO
+
   #include <RH_RF69.h>
   #include <FlashStorage.h>
 
+  const int MIN_HALL = 18;
+  const int CENTER_HALL = 305;
+  const int MAX_HALL = 629;
+
 #elif ESP32
+
   #include <LoRa.h>
   #include <driver/adc.h>
   #include <esp_sleep.h>
@@ -21,6 +27,10 @@
   #include <nvs.h>
   #include <nvs_flash.h>
   #include <Preferences.h>
+
+  const int MIN_HALL = 500;
+  const int CENTER_HALL = 744;
+  const int MAX_HALL = 1023;
 
 #endif
 
@@ -66,7 +76,7 @@ enum ui_page {
   PAGE_MENU,
   PAGE_MAX,
   PAGE_DEBUG,
-} page = PAGE_MENU;
+} page = PAGE_MAIN;
 
 // speed control
 enum control_mode {
@@ -83,11 +93,15 @@ const float minVoltage = 3.1;
 const float maxVoltage = 4.2;
 const float refVoltage = 3.3; // Feather double-100K resistor divider
 
-// Defining variables for Hall Effect throttle.
+// Hall Effect throttle
 uint16_t hallValue;
 float throttle;
 
-// Defining variables for OLED display
+const uint8_t hallNoiseMargin = 8;
+byte hallCenterMargin = 0;
+
+
+// OLED display
 unsigned long lastSignalBlink;
 bool signalBlink = false;
 byte counter = 0;
@@ -95,6 +109,23 @@ byte counter = 0;
 unsigned long lastInteraction; // last time controls were used
 unsigned long stopTime;
 bool stopped = true;
+
+// Defining variables for radio communication
+unsigned long lastTransmission;
+bool connected = false;
+short failCount;
+
+unsigned long lastMarker;
+unsigned long lastDelay;
+
+// power
+bool power = true;
+uint8_t shutdownReq = 0;
+
+// cruise control
+float cruiseSpeed = 0;
+int cruiseStartThrottle;
+int cruiseThrottle;
 
 // menu
 enum menu_page {
@@ -110,8 +141,8 @@ const byte mainMenus = 3;
 
 String MENUS[mainMenus][subMenus] = {
     { "Info", "Debug", "", "", "", "" },
-    { "Remote", "Calibrate", "Pair", "Sleep timer", "", "" },
-    { "Board", "Max Speed", "Range", "Cells", "Bat type", "Motor poles" }
+    { "Remote", "Calibrate", "Pair", "Auto off", "", "" },
+    { "Board", "Max Speed", "Range", "Cells", "Battery", "Motor" }
   };
 
 enum menu_main { MENU_INFO, MENU_REMOTE, MENU_BOARD };
@@ -131,7 +162,6 @@ bool menuWasUsed = false;
 // const int WHEEL_DIAMETER = 90;
 // const int WHEEL_PULLEY = 1;
 // const int MOTOR_PULLEY = 1;
-
 
 // Button constants
 const int CLICK     = 1;
