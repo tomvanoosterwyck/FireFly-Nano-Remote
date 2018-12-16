@@ -233,7 +233,7 @@ void Adafruit_SSD1306::begin(uint8_t vccstate, uint8_t i2caddr) {
   //    ssd1306_command(0x00);//---set low column address
   //    ssd1306_command(0x10);//---set high column address
   ssd1306_command(SSD1306_SETDISPLAYCLOCKDIV);            // 0xD5
-  ssd1306_command(0x80);                                  // the suggested ratio 0x80
+  ssd1306_command(0xF0); // F0 - Increase speed           // the suggested ratio 0x80
   ssd1306_command(SSD1306_SETMULTIPLEX);                  // 0xA8
   ssd1306_command(0x3F);
   ssd1306_command(SSD1306_SETDISPLAYOFFSET);              // 0xD3
@@ -272,18 +272,18 @@ void Adafruit_SSD1306::begin(uint8_t vccstate, uint8_t i2caddr) {
   {
     ssd1306_command(0xF1);
   }
-  ssd1306_command(SSD1306_SETVCOMDETECT);                 // 0xDB
-  ssd1306_command(0x40);
+  // ssd1306_command(SSD1306_SETVCOMDETECT); // not in TTGO                // 0xDB
+  // ssd1306_command(0x40);
   ssd1306_command(SSD1306_DISPLAYALLON_RESUME);           // 0xA4
   ssd1306_command(SSD1306_NORMALDISPLAY);                 // 0xA6
 
-  ssd1306_command(0x2e);     // stop scroll
+  ssd1306_command(0xb0);    // ?
+  ssd1306_command(0x10);    // ?
 
-  ssd1306_command(0xb0);
-  ssd1306_command(0x10);
-
-  ssd1306_command(0x01);//Set original position to (0,0)
+  // ssd1306_command(0x01);//Set original position to (0,0)
 // #endif
+
+  ssd1306_command(0x2e);     // stop scroll
 
   ssd1306_command(SSD1306_DISPLAYON);//--turn on oled panel
 }
@@ -460,6 +460,15 @@ void Adafruit_SSD1306::display(void) {
   }
   else
   {
+    // fix for a screen offset issue
+    ssd1306_command(SSD1306_COLUMNADDR);
+    ssd1306_command(0x0);
+    ssd1306_command(0x7F);
+
+    ssd1306_command(SSD1306_PAGEADDR);
+    ssd1306_command(0x0);
+    ssd1306_command(0x7);
+
     // save I2C bitrate
     //uint8_t twbrbackup = TWBR;
     //TWBR = 12; // upgrade to 400KHz!

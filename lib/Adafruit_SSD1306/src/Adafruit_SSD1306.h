@@ -89,6 +89,8 @@ All text above, and the splash screen must be included in any redistribution
 #define SSD1306_SETSTARTLINE 0x40
 
 #define SSD1306_MEMORYMODE 0x20
+#define SSD1306_COLUMNADDR 0x21
+#define SSD1306_PAGEADDR 0x22
 
 #define SSD1306_COMSCANINC 0xC0
 #define SSD1306_COMSCANDEC 0xC8
