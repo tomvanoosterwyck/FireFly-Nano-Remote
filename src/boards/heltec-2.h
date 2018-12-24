@@ -13,18 +13,20 @@
 //
 
 // Pin definitions
-#define LED           25   // TX LED on board
-#define PIN_BUTTON    14   // RX - pushbutton pin
-#define PIN_TRIGGER   RX
-#define PIN_THROTTLE  32 // ?
+#define LED           25   // LED on board
+#define PIN_BUTTON    12
+#define PIN_TRIGGER   32
+#define ADC_THROTTLE  ADC1_GPIO38_CHANNEL // ADC1_CHANNEL_2
+
 #define PIN_BATTERY   13
 
 #define HAS_BUTTON (0) // button "PRG" on board
 
-// #define PIN_VIBRO     ?
+#define PIN_VIBRO     17
 
 #define HAS_DISPLAY  // OLED-Display on board
 #define DISPLAY_ROTATION  1
+#define DISPLAY_ROTATION_90 0
 
 #define BATTERY_PROBE ADC2_CHANNEL_4 // uses GPIO7
 #define BATT_FACTOR 2 // voltage divider 100k/100k on board

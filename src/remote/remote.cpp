@@ -51,17 +51,20 @@ void setup() {
   #endif
 
   pinMode(PIN_TRIGGER, INPUT_PULLUP);
-  pinMode(PIN_THROTTLE, INPUT);
   pinMode(PIN_BUTTON, INPUT_PULLUP);
   pinMode(LED, OUTPUT);
 
   digitalWrite(LED, LOW);
 
-  // Start radio communication
   #ifdef ARDUINO_SAMD_ZERO // Feather M0 w/Radio
     initRadio(radio);
+    // config throttle
+    pinMode(PIN_THROTTLE, INPUT);
   #elif ESP32
     initRadio();
+    // config throttle
+    adc1_config_width(ADC_WIDTH_BIT_10);
+    adc1_config_channel_atten(ADC_THROTTLE, ADC_ATTEN_DB_2_5);
   #endif
 
   display.begin(SSD1306_SWITCHCAPVCC, 0x3C);
@@ -357,22 +360,14 @@ void loadSettings() {
     // }
 
     preferences.begin("FireFlyNano", false);
-
-    remPacket.version = VERSION;
-
     settings.minHallValue = preferences.getShort("MIN_HALL",  MIN_HALL);
     settings.centerHallValue = preferences.getShort("CENTER_HALL", CENTER_HALL);
     settings.maxHallValue = preferences.getShort("MAX_HALL", MAX_HALL);
-
-    debug("MIN_HALL: " + String(settings.minHallValue));
-
-    preferences.putShort("MIN_HALL",  11);
+    preferences.end();
 
   #elif ARDUINO_SAMD_ZERO
 
     settings = flash_settings.read();
-
-    debug("MIN_HALL: " + String(settings.minHallValue));
 
     if (settings.valid == false) {
       settings.minHallValue = MIN_HALL;
@@ -383,19 +378,22 @@ void loadSettings() {
 
   #endif
 
+  remPacket.version = VERSION;
 }
 
 // only after chamge
 void saveSettings() {
+  debug("saving settings...");
 
   #ifdef ESP32
 
+    preferences.begin("FireFlyNano", false);
     preferences.putShort("MIN_HALL",  settings.minHallValue);
-    preferences.getShort("CENTER_HALL", settings.centerHallValue);
-    preferences.getShort("MAX_HALL", settings.maxHallValue);
+    preferences.putShort("CENTER_HALL", settings.centerHallValue);
+    preferences.putShort("MAX_HALL", settings.maxHallValue);
+    preferences.end();
 
   #elif ARDUINO_SAMD_ZERO
-    debug("saving settings...");
 
     settings.valid = true;
     flash_settings.write(settings);
@@ -685,16 +683,24 @@ int readThrottlePosition() {
 
   // Hall sensor reading can be noisy, lets make an average reading.
   uint32_t total = 0;
-  uint8_t samples = 32;
+  uint8_t samples = 20;
 
   #ifdef ESP32
 
-    adc1_config_width(ADC_WIDTH_BIT_10);
-    adc1_config_channel_atten(ADC1_GPIO34_CHANNEL, ADC_ATTEN_DB_2_5);
+    // adc1_config_width(ADC_WIDTH_BIT_10);
+    // adc1_config_channel_atten(ADC_THROTTLE, ADC_ATTEN_DB_2_5);
+
+    // // Calculate ADC characteristics i.e. gain and offset factors
+    // esp_adc_cal_characteristics_t characteristics;
+    // esp_adc_cal_get_characteristics(V_REF, ADC_ATTEN_11db, ADC_WIDTH_12Bit, &characteristics);
+    //
+    // // Read ADC and obtain result in mV
+    // uint32_t voltage = adc1_to_voltage(ADC1_CHANNEL_6, &characteristics);
+    // printf("%d mV\n",voltage);
 
     for ( uint8_t i = 0; i < samples; i++ )
     {
-      total += adc1_get_raw(ADC1_GPIO34_CHANNEL);
+      total += adc1_get_raw(ADC_THROTTLE);
     }
 
   #elif ARDUINO_SAMD_ZERO

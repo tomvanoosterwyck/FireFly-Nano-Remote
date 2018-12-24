@@ -28,8 +28,8 @@
   #include <nvs_flash.h>
   #include <Preferences.h>
 
-  const int MIN_HALL = 500;
-  const int CENTER_HALL = 744;
+  const int MIN_HALL = 350;
+  const int CENTER_HALL = 755;
   const int MAX_HALL = 1023;
 
 #endif
