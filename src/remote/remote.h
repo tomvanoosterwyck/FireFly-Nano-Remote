@@ -115,6 +115,8 @@ short failCount;
 unsigned long lastMarker;
 unsigned long lastDelay;
 
+unsigned long startupTime;
+
 // power
 bool power = true;
 uint8_t shutdownReq = 0;

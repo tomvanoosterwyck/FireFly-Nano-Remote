@@ -32,6 +32,9 @@ Adafruit_SSD1306 display(DISPLAY_RST);
 #include "radio.h"
 
 void setup() {
+
+  startupTime = millis();
+
   Serial.begin(115200);
 
   // while (!Serial) { ; }
@@ -110,7 +113,7 @@ void loop() { // core 1
 
 void radioLoop() {
   // Transmit once every 50 millisecond
-  if (millis() - lastTransmission < 50) return;
+  if (millisSince(lastTransmission) < 50) return;
 
   // mark start
   lastTransmission = millis();
@@ -144,7 +147,7 @@ void calculateThrottle()
       }
     }
     // sleep timer
-    if (stopped && millis() - lastInteraction > REMOTE_SLEEP_TIMEOUT * 1000) sleep();
+    if (stopped && secondsSince(lastInteraction) > REMOTE_SLEEP_TIMEOUT) sleep();
     break;
 
   case MODE_NORMAL:
@@ -160,7 +163,7 @@ void calculateThrottle()
 
     // activate deadman switch
     if (stopped && throttle == default_throttle) { // idle
-      if (millis() - stopTime > REMOTE_LOCK_TIMEOUT * 1000) {
+      if (secondsSince(stopTime) > REMOTE_LOCK_TIMEOUT) {
         // lock remote
         controlMode = MODE_IDLE;
         debug("locked");
@@ -674,11 +677,11 @@ void transmitToReceiver() {
     // Listen for an acknowledgement reponse and return of uart data
     if (receiveData()) {
       // transmission time
-      lastDelay = millis() - lastTransmission;
+      lastDelay = millisSince(lastTransmission);
       digitalWrite(LED, LOW);
 
-      // Transmission was a success
-      if (!connected) vibrate(200);
+      // Transmission was a success (2 seconds after remote startup)
+      if (!connected && secondsSince(startupTime) > 2 ) vibrate(200);
 
       connected = true;
       failCount = 0;
@@ -903,7 +906,7 @@ void drawShutdownScreen()
   drawString("Turning off...", -1, 60, fontMicro);
 
   // shrinking line
-  long ms_left = longHoldTime - (millis() - downTime);
+  long ms_left = longHoldTime - (millisSince(downTime));
   int w = map(ms_left, 0, longHoldTime - holdTime, 0, 32);
   drawHLine(32 - w, 70, w * 2); // top line
 }
@@ -921,7 +924,7 @@ void drawConnectingScreen()
   drawString(String(RF_FREQ, 0) + " Mhz", -1, y + 12, fontMicro);
 
   // blinking icon
-  if (millis() - lastSignalBlink > 500) {
+  if (millisSince(lastSignalBlink) > 500) {
     signalBlink = !signalBlink;
     lastSignalBlink = millis();
   }

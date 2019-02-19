@@ -21,6 +21,14 @@ byte CRC8(const void *data, byte len) {
   return crc;
 }
 
+unsigned long millisSince(unsigned long time) {
+  return millis() - time;
+}
+
+unsigned long secondsSince(unsigned long time) {
+  return millisSince(time) / 1000;
+}
+
 void printStruct(const void * data, byte len) {
 
   for(int i = 0; i < len; i++){
