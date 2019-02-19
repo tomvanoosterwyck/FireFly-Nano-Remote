@@ -89,7 +89,7 @@ enum control_mode {
 } controlMode = MODE_IDLE;
 
 // Battery monitoring
-const float minVoltage = 3.1;
+const float minVoltage = 3.3; // min voltage with vibro motor
 const float maxVoltage = 4.2;
 const float refVoltage = 3.3; // Feather double-100K resistor divider
 
