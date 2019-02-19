@@ -277,7 +277,37 @@ void sleep()
     // wait for button release
     while (pressed(PIN_BUTTON)) vTaskDelay(10);
 
-    esp_deep_sleep_enable_ext0_wakeup((gpio_num_t)PIN_BUTTON, 0);
+    // keep RTC on
+    esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_PERIPH, ESP_PD_OPTION_ON);
+    gpio_pullup_en((gpio_num_t)PIN_BUTTON);
+    gpio_pulldown_dis((gpio_num_t)PIN_BUTTON);
+
+    // wake up when the top button is pressed
+    const uint64_t ext_wakeup_pin_1_mask = 1ULL << PIN_BUTTON;
+    esp_sleep_enable_ext1_wakeup(ext_wakeup_pin_1_mask, ESP_EXT1_WAKEUP_ALL_LOW);
+
+    // turn off radio
+    LoRa.end();
+    LoRa.sleep();
+    delay(100);
+
+    // setup the peripherals state in deep sleep
+    pinMode(DISPLAY_SCL, INPUT);
+    pinMode(DISPLAY_RST,INPUT);
+
+    pinMode(PIN_VIBRO, INPUT); //
+
+    pinMode(RF_MISO, INPUT);
+    pinMode(RF_DI0, INPUT);
+    pinMode(RF_MOSI, INPUT);
+
+    // pinMode(5,INPUT);
+    // pinMode(14,INPUT);
+    // pinMode(18,INPUT);
+
+    // disable battery probe
+  	pinMode(VEXT, OUTPUT);
+  	digitalWrite(VEXT, HIGH);
 
     // Enter sleep mode and wait for interrupt
     esp_deep_sleep_start();
@@ -287,15 +317,11 @@ void sleep()
 
   // After waking the code continues
   // to execute from this point.
-
   detachInterrupt(digitalPinToInterrupt(PIN_BUTTON));
 
   #ifdef ARDUINO_SAMD_ZERO
     SCB->SCR &= ~SCB_SCR_SLEEPDEEP_Msk;
     USBDevice.attach();
-  #elif ESP32
-
-
   #endif
 
   digitalWrite(LED, HIGH);
