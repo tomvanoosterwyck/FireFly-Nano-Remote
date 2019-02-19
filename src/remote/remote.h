@@ -9,9 +9,6 @@
 
 #ifdef ARDUINO_SAMD_ZERO
 
-  #include <RH_RF69.h>
-  #include <FlashStorage.h>
-
   const int MIN_HALL = 18;
   const int CENTER_HALL = 305;
   const int MAX_HALL = 629;

@@ -18,6 +18,7 @@ Adafruit_SSD1306 display(DISPLAY_RST);
 #ifdef ARDUINO_SAMD_ZERO // Feather M0 w/Radio
 
   #include <RH_RF69.h>
+  #include <FlashStorage.h>
 
   // Singleton instance of the radio driver
   RH_RF69 radio(RF_CS, RF_DI0);
