@@ -6,6 +6,7 @@
 
 #include <Adafruit_GFX.h>
 #include "Adafruit_SSD1306.h"
+#include <Smoothed.h>
 
 #ifdef ARDUINO_SAMD_ZERO
 
@@ -90,6 +91,8 @@ const float minVoltage = 3.3; // min voltage with vibro motor
 const float maxVoltage = 4.2;
 const float refVoltage = 3.3; // Feather double-100K resistor divider
 
+unsigned long lastBatterySample = 0; // smooth remote voltage
+
 // Hall Effect throttle
 uint16_t hallValue;
 float throttle;
@@ -125,6 +128,7 @@ uint8_t shutdownReq = 0;
 float cruiseSpeed = 0;
 int cruiseStartThrottle;
 int cruiseThrottle;
+
 
 // menu
 enum menu_page {
@@ -216,12 +220,12 @@ const unsigned char noconnectionIcon[] PROGMEM = {
 #include "fonts/Lato_Regular_7.h"
 #include "fonts/Digital.h"
 #include "fonts/Pico.h"
-#include <Fonts/Org_01.h> // Adafruit
+#include <fonts/Org_01_5p.h>
 
 const GFXfont* fontDigital = &Segment13pt7b;  // speed, distance, ...
 const GFXfont* fontPico = &Segment6pt7b;      //
 const GFXfont* fontDesc = &Dialog_plain_9;    // km/h
-const GFXfont* fontMicro = &Org_01;         // connection screen
+const GFXfont* fontMicro = &Org_01_5p;         // connection screen
 
 float batteryLevel();
 float batteryLevelVolts();

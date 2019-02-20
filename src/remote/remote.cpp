@@ -4,6 +4,8 @@
 // define display
 Adafruit_SSD1306 display(DISPLAY_RST);
 
+Smoothed <double> batterySensor;
+
 // Adafruit_SSD1306 display(64, 128, &Wire, DISPLAY_RST, 700000, 700000);
 
 /************ Radio Setup ***************/
@@ -47,6 +49,7 @@ void setup() {
   #ifdef PIN_BATTERY
     pinMode(PIN_BATTERY, INPUT);
     #ifdef ESP32
+     // enable battery probe
       pinMode(VEXT, OUTPUT);
       digitalWrite(VEXT, LOW);
       adcAttachPin(PIN_BATTERY);
@@ -70,6 +73,9 @@ void setup() {
     adc1_config_width(ADC_WIDTH_BIT_10);
     adc1_config_channel_atten(ADC_THROTTLE, ADC_ATTEN_DB_2_5);
   #endif
+
+  // 10 seconds average
+  batterySensor.begin(SMOOTHED_AVERAGE, 10);
 
   display.begin(SSD1306_SWITCHCAPVCC, 0x3C);
   display.setRotation(DISPLAY_ROTATION);
@@ -765,61 +771,41 @@ int readThrottlePosition() {
   return position;
 }
 
-double ReadVoltage(byte pin){
-  double reading = analogRead(pin); // Reference voltage is 3v3 so maximum reading is 3v3 = 4095 in range 0 to 4095
-  if(reading < 1 || reading >= 4095) return 0;
-
-  // return -0.000000000009824 * pow(reading,3) + 0.000000016557283 * pow(reading,2) + 0.000854596860691 * reading + 0.065440348345433;
-  return -0.000000000000016 * pow(reading,4) + 0.000000000118171 * pow(reading,3)- 0.000000301211691 * pow(reading,2)+ 0.001109019271794 * reading + 0.034143524634089;
-} // Added an improved polynomial, use either, comment out as required
-
-
 /*
    Calculate the remotes battery voltage
 */
 float batteryLevelVolts() {
 
-  uint16_t total = 0;
-  uint8_t samples = 5;
+  // read battery sensor every seconds
+  if (secondsSince(lastBatterySample) > 1 || lastBatterySample == 0) {
 
-  #ifdef ARDUINO_SAMD_ZERO
+    lastBatterySample = millis();
 
+    uint16_t total = 0;
+    uint8_t samples = 10;
+
+    // read raw value
     for (uint8_t i = 0; i < samples; i++) {
       total += analogRead(PIN_BATTERY);
     }
 
-    return ( (float)total / (float)samples ) * 2 * refVoltage / 1024.0;
+    // calculate voltage
+    float voltage;
 
-  #elif ESP32
-    // 4.2v  == polynomial 1.6 == 1823
-    // 1.6*2 = 3.2
-    total = analogRead(PIN_BATTERY);
-    return ReadVoltage(PIN_BATTERY) * 2.64;
+    #ifdef ARDUINO_SAMD_ZERO
+      voltage = ( (float)total / (float)samples ) * 2 * refVoltage / 1024.0;
+    #elif ESP32
+      double reading = (double)total / (double)samples;
+      voltage = -0.000000000000016 * pow(reading,4) + 0.000000000118171 * pow(reading,3)- 0.000000301211691 * pow(reading,2)+ 0.001109019271794 * reading + 0.034143524634089;
+      voltage = voltage * 2.64;
+    #endif
 
-    // ADC_6db provides an attenuation so that IN/OUT = 1 / 2 an input of 3 volts is reduced to 1.500 volts before ADC measurement
-    // analogSetAttenuation(ADC_6db);
-    // analogSetWidth(10);  // range of 0-1023
+    // add to array
+    batterySensor.add(voltage);
+  }
 
-    // debug("battery raw: " + String(ReadVoltage(PIN_BATTERY)));
-
-
-    // for (uint8_t i = 0; i < samples; i++) {
-    //   total += analogRead(PIN_BATTERY);
-    // }
-
-    // return ( (float)total / (float)samples ) * 0.00225;
-
-    // adc1_config_width(ADC_WIDTH_BIT_10);
-    // adc1_config_channel_atten(BATTERY_PROBE, ADC_ATTEN_DB_11);
-    //
-    // for ( uint8_t i = 0; i < samples; i++ )
-    // {
-    //   total += adc1_get_raw(BATTERY_PROBE);
-    // }
-    // // check!
-    // return ( (float)total / (float)samples ) / 1024.0 * 2 * refVoltage * 1.1;
-  #endif
-
+  // smoothed value
+  return batterySensor.get();
 }
 
 /*
@@ -1460,18 +1446,18 @@ void drawBatteryLevel() {
   int x = 2;
   int y = 2;
 
-  uint8_t level = batteryLevel();
+  uint8_t level = batteryLevel(); // 0 - 100
 
   drawFrame(x, y, 18, 9);
   drawBox(x + 18, y + 2, 2, 5);
 
-  for (uint8_t i = 0; i < 5; i++) {
-    uint8_t p = round((100 / 5) * i);
-    if (p <= level)
-    {
-      drawBox(x + 2 + (3 * i), y + 2, 2, 5);
-    }
+  // battery level
+  drawBox(x + 2, y + 2, level * 14 / 100, 5);
+
+  if (level <= 9) {
+    drawString(String(level), x + 7, y + 6, fontMicro);
   }
+
 }
 
 int checkButton() {
