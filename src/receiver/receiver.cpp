@@ -52,19 +52,23 @@ void setup()
 
   pinMode(LED, OUTPUT);
 
-  //  UART.setDebugPort(&Serial);
   UART.setTimeout(UART_TIMEOUT);
 
   #ifdef ARDUINO_SAMD_FEATHER_M0
-    //  UART.setDebugPort(&Serial);
-    UART.setSerialPort(&Serial1);
-    Serial1.begin(UART_SPEED);
+
+    #ifndef FAKE_UART
+      UART.setSerialPort(&Serial1);
+      Serial1.begin(UART_SPEED);
+    #endif
+
     initRadio(radio);
 
   #elif ESP32
-    // uart connection
-    UART.setSerialPort(&MySerial);
-    MySerial.begin(UART_SPEED, SERIAL_8N1, RX, TX);
+
+    #ifndef FAKE_UART
+      UART.setSerialPort(&MySerial);
+      MySerial.begin(UART_SPEED, SERIAL_8N1, RX, TX);
+    #endif
 
     initRadio();
 
@@ -663,11 +667,12 @@ void setThrottle(uint16_t value)
     throttle = value;
 
     // UART
+    #ifndef FAKE_UART
     UART.nunchuck.valueY = value;
     UART.nunchuck.upperButton = false;
     UART.nunchuck.lowerButton = false;
     UART.setNunchuckValues();
-
+    #endif
     // PPM
     //    digitalWrite(throttlePin, HIGH);
     //    delayMicroseconds(map(throttle, 0, 255, 1000, 2000) );
@@ -677,10 +682,12 @@ void setThrottle(uint16_t value)
 void setCruise(uint8_t speed) {
 
     // UART
+    #ifndef FAKE_UART
     UART.nunchuck.valueY = 127;
     UART.nunchuck.upperButton = false;
     UART.nunchuck.lowerButton = true;
     UART.setNunchuckValues();
+    #endif
 }
 
 // void speedControl( uint16_t throttle , bool trigger )
@@ -744,13 +751,16 @@ void getUartData()
     lastUartPull = millis();
 
     // debug
-    // telemetry.setVoltage(41.35);
-    // telemetry.setDistance(10.2);
-    // telemetry.setSpeed(20);
-    // telemetry.setMotorCurrent(-21);
-    // telemetry.setInputCurrent(12);
-    // telemetryUpdated = true;
-    // return;
+    #ifdef FAKE_UART
+      telemetry.setVoltage(41.35);
+      telemetry.setDistance(rand()%30);
+      telemetry.setSpeed(0);
+      telemetry.setMotorCurrent(-21);
+      telemetry.setInputCurrent(12);
+      telemetryUpdated = true;
+      delay(7);
+      return;
+    #endif
 
     // Only get what we need
     if ( UART.getVescValues() )
