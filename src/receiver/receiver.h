@@ -50,11 +50,16 @@ uint8_t throttle;
 #include "fonts/Pico.h"
 #include <Fonts/Org_01.h> // Adafruit
 
+#include <Fonts/FreeSans9pt7b.h>
+#include <Fonts/FreeSans12pt7b.h>
+
 const GFXfont* fontDigital = &Segment13pt7b;  // speed, distance, ...
-const GFXfont* fontPico = &Segment6pt7b;      //
+// const GFXfont* fontPico = &Segment6pt7b;      //
 const GFXfont* fontDesc = &Dialog_plain_9;    // km/h
 const GFXfont* fontMicro = &Org_01;         // connection screen
 
+const GFXfont* fontBig = &FreeSans12pt7b;         // connection screen
+const GFXfont* font = &FreeSans9pt7b;         // connection screen
 void acquireSetting();
 void calculateRatios();
 void controlStatusLed();

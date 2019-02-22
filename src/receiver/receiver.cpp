@@ -86,6 +86,39 @@ void setup()
   #endif
 }
 
+int getStringWidth(String s) {
+
+  int16_t x1, y1;
+  uint16_t w1, h1;
+
+  display.getTextBounds(s, 0, 0, &x1, &y1, &w1, &h1);
+  return w1;
+}
+
+void drawString(String string, int x, int y, const GFXfont *font) {
+
+  display.setFont(font);
+
+  display.setCursor(x, y);
+  display.print(string);
+}
+
+void drawStringCentered(String string, int x, int y, const GFXfont *font) {
+  display.setFont(font);
+  x = x - getStringWidth(string) / 2;
+  drawString(string, x, y, font);
+}
+
+String getModeText() {
+  switch (mode) {
+    case IDLE: return "Idle";
+    case RIDING: return "Normal";  // dB?
+    case STOPPING: return "Stopping";
+    case STOPPED: return "Stopped";
+    case ENDLESS: return "Auto";
+  }
+}
+
 #ifdef RECEIVER_SCREEN
 void updateScreen() {
 
@@ -105,6 +138,15 @@ void updateScreen() {
     display.print("THR: " + String(map(throttle, 0, 255, -100, 100)) + "%");
 
   }
+
+  // ---- status ----
+  display.setTextColor(WHITE);
+
+  drawStringCentered(
+    getModeText() + "  " +
+    String(telemetry.getVoltage(), 1) + "v  " +
+    String(telemetry.getDistance(), 1) + "km",
+    64, 62, fontDesc);
 
   display.display();
 }
@@ -134,14 +176,13 @@ float batteryPackPercentage( float voltage ) {
   return percentage;
 }
 
-void drawBattery() {
 
-  float volts = telemetry.getVoltage();
-  float pc = batteryPackPercentage(volts);
+void drawBattery() {
 
   display.setTextColor(WHITE);
 
-  if (volts == 0) {
+
+  if (telemetry.getVoltage() == 0) {
 
     // no uart connection
     display.setFont();
@@ -161,42 +202,157 @@ void drawBattery() {
     return;
   }
 
-  display.drawRect(0,0,122,48, WHITE);
-  display.drawRect(1,1,120,46, WHITE);
+  // --- battery ----
+  int w = 120; int h = 46;
+  display.drawRect(0, 0, w, h, WHITE);
+  display.drawRect(1, 1, w-2, h-2, WHITE);
 
-  display.fillRect(122, 10, 6, 48-10-10, WHITE);
+  display.fillRect(w, 10, 6, h-10-10, WHITE);
 
-  display.setFont(fontPico);
+  // fill
+  float pc = batteryPackPercentage(telemetry.getVoltage());
+  int x = w * pc / 100-8;
+  display.fillRect(4, 4, x, h-8, WHITE);
 
-  // % charge
-  int y = 62;
-  display.setCursor(0, y);
-  display.print(String(pc, 0) + " %   "
-            + String(volts, 1) + " V   "
-            + String(telemetry.getDistance(), 2) + " km   "
-            + String(lastDelay) + " ms");
-
-  for (uint8_t i = 0; i < 5; i++) {
-    int p = round((100 / 5) * i);
-    if (p <= pc)
-    {
-      display.fillRect(5 + (23 * i), 5, 20, 38, WHITE);
-    }
+  // % value
+  if (pc > 50) { // left side
+    display.setTextColor(BLACK);
+    drawStringCentered(String(pc, 0) + "%", x/2 + 4, 31, fontBig);
+  } else { // right side
+    display.setTextColor(WHITE);
+    drawStringCentered(String(pc, 0) + "%", x + (w - x) / 2, 31, fontBig);
   }
+
+
+
 
 }
 #endif // RECEIVER_SCREEN
 
+#ifdef BLUETOOTH
+  class MyServerCallbacks: public BLEServerCallbacks {
+      void onConnect(BLEServer* pServer) {
+        deviceConnected = true;
+        Serial.println("*** connected ******");
+
+      };
+
+      void onDisconnect(BLEServer* pServer) {
+        deviceConnected = false;
+      }
+  };
+
+  // receive BLE data
+  class MyCallbacks: public BLECharacteristicCallbacks {
+      void onWrite(BLECharacteristic *pCharacteristic) {
+
+        std::string rxValue = pCharacteristic->getValue();
+
+        uint8_t messageReceived[256];
+        int count = 0;
+
+        if (rxValue.length() > 0) {
+          // Serial.println("*********");
+          // Serial.print("Received Value: ");
+          for (int i = 0; i < rxValue.length(); i++) {
+            // line1 += String(rxValue[i], HEX) + " ";
+            messageReceived[i] = rxValue[i];
+            count++;
+          }
+          // Serial.print(line1);
+
+          // Forward package to UART
+          // stop byte?
+          // count++;
+          // messageReceived[count] = '\0';
+
+        	MySerial.write(messageReceived, count);
+        }
+      }
+  };
+
+  void stopBLE() {
+
+    // Stop advertising
+    pServer->getAdvertising()->stop();
+
+    // Start the service
+    pService->stop();
+
+
+  }
+
+  void startBLE() {
+
+    // Create the BLE Device
+    BLEDevice::init("FireFly Nano Receiver");
+
+    // Create the BLE Server
+    pServer = BLEDevice::createServer();
+    pServer->setCallbacks(new MyServerCallbacks());
+
+    // Create the BLE Service
+    pService = pServer->createService(SERVICE_UUID);
+
+    // Create a BLE Characteristic
+    pTxCharacteristic = pService->createCharacteristic(
+  				  CHARACTERISTIC_UUID_TX, BLECharacteristic::PROPERTY_NOTIFY);
+
+    pTxCharacteristic->addDescriptor(new BLE2902());
+
+    BLECharacteristic * pRxCharacteristic = pService->createCharacteristic(
+  					CHARACTERISTIC_UUID_RX, BLECharacteristic::PROPERTY_WRITE);
+
+    pRxCharacteristic->setCallbacks(new MyCallbacks());
+
+    // Start the service
+    pService->start();
+
+    // Start advertising
+    pServer->getAdvertising()->start();
+    debug("Waiting a client connection to notify...");
+
+  }
+#endif
+
+
+
+
+
+
 void loop() // core 1
 {
   // get telemetry");
-  getUartData(); // every 250  ms
+  if (!deviceConnected) getUartData(); // every 250  ms
 
   #ifdef ARDUINO_SAMD_ZERO
     radioExchange();
   #elif RECEIVER_SCREEN
     updateScreen(); // 25 ms
     vTaskDelay(1);
+  #endif
+
+  #ifdef BLUETOOTH
+
+  if (deviceConnected) {
+
+    // get response
+    if (MySerial.available()) {
+
+      uint8_t payload[256];
+      size_t sz = UART.receiveUartMessageRaw(payload);
+
+      // for (int i = 0; i < sz; i++) {
+      //   line3 += String(payload[i], HEX) + " ";
+      // }
+
+      // send response
+      pTxCharacteristic->setValue(payload, sz);
+      pTxCharacteristic->notify();
+    }
+
+    delay(1); // bluetooth stack will go into congestion, if too many packets are sent
+  }
   #endif
 
 }
