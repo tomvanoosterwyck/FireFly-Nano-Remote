@@ -3,14 +3,24 @@
 
 #include <Arduino.h>
 
-// #define DEBUG // Uncomment DEBUG if you need to debug the remote
+#define DEBUG // Uncomment DEBUG if you need to debug the remote
+
+// #define FAKE_UART // Uncomment if VESC not connected
+
+#define UNITY //
 
 /*
   Connect receiver and open Serial Monitor (Cmd+Shift+M),
   it will display the correct chip ID.
 */
-const uint32_t boardAddress = 0xc89cb368;
+// const uint32_t boardAddress = 0xc89cb368; // Feather
+// const uint32_t boardAddress = 0x88bf713c; // TTGO
+// const uint32_t boardAddress = 0xfea4ae30; // TTGO w/o screen
+const uint32_t boardAddress = 0x8cbf713c; // Heltec
 
+// Auto stop (in seconds)
+const float AUTO_BRAKE_TIME = 5.0;      // time to apply the full break
+const int AUTO_BRAKE_RELEASE = 5;       // time to release breaks after the full stop
 
 // UART
 const int UART_SPEED = 115200;

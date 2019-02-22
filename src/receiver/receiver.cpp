@@ -113,13 +113,15 @@ void drawStringCentered(String string, int x, int y, const GFXfont *font) {
   drawString(string, x, y, font);
 }
 
-String getModeText() {
-  switch (mode) {
+String getState() {
+  switch (state) {
     case IDLE: return "Idle";
-    case RIDING: return "Normal";  // dB?
+    case CONNECTED: return "Normal";  // dB?
     case STOPPING: return "Stopping";
     case STOPPED: return "Stopped";
     case ENDLESS: return "Auto";
+    case AUTO_WALK: return "Cruise 5";
+    case AUTO_CRUISE: return "Cruise 15";
   }
 }
 
@@ -128,26 +130,36 @@ void updateScreen() {
 
   display.clearDisplay();
 
-  if (throttle == 127) {
+  switch (state) {
 
-    // show vesc info in idle mode
-    drawBattery();
+    case IDLE:
+      drawBattery();
+      break;
 
-  } else {
+    case AUTO_WALK:
+    case AUTO_CRUISE:
+      display.setTextColor(WHITE);
+      display.setFont(fontDigital);
 
-    display.setCursor(0, 20);
-    display.setTextColor(WHITE);
+      display.setCursor(0, 20);
+      display.println("CRUISE: 5");
+      display.println("SPD: " + String(telemetry.getSpeed(),1));
+      break;
 
-    display.setFont(fontDigital);
-    display.print("THR: " + String(map(throttle, 0, 255, -100, 100)) + "%");
+    default:
+      display.setTextColor(WHITE);
+      display.setFont(fontDigital);
 
+      display.setCursor(0, 20);
+      display.print("THR: " + String(map(throttle, 0, 255, -100, 100)) + "%");
+      display.print("SPD: " + String(telemetry.getSpeed(),1) + " k");
   }
 
   // ---- status ----
   display.setTextColor(WHITE);
 
   drawStringCentered(
-    getModeText() + "  " +
+    getState() + "  " +
     String(telemetry.getVoltage(), 1) + "v  " +
     String(telemetry.getDistance(), 1) + "km",
     64, 62, fontDesc);
@@ -226,9 +238,6 @@ void drawBattery() {
     display.setTextColor(WHITE);
     drawStringCentered(String(pc, 0) + "%", x + (w - x) / 2, 31, fontBig);
   }
-
-
-
 
 }
 #endif // RECEIVER_SCREEN
@@ -319,11 +328,6 @@ void drawBattery() {
   }
 #endif
 
-
-
-
-
-
 void loop() // core 1
 {
   // get telemetry");
@@ -331,6 +335,7 @@ void loop() // core 1
 
   #ifdef ARDUINO_SAMD_ZERO
     radioExchange();
+    stateMachine();
   #elif RECEIVER_SCREEN
     updateScreen(); // 25 ms
     vTaskDelay(1);
@@ -370,6 +375,7 @@ void loop() // core 1
 
     while (true) {
       radioExchange();
+      stateMachine();
       vTaskDelay(1);
     }
   }
@@ -517,6 +523,10 @@ bool dataAvailable() {
   #endif
 }
 
+bool isNormalState() {
+  return state != STOPPING;
+}
+
 void radioExchange() {
 
   // controlStatusLed();
@@ -540,6 +550,11 @@ void radioExchange() {
 
       switch (remPacket.command) {
         case SET_THROTTLE:
+          if (isNormalState) { // recover from auto stop
+            state = CONNECTED;
+          } // else response = AUTO_STOP
+
+          // falltrough
         case SET_CRUISE:
           if (telemetryUpdated) { response = TELEMETRY; }
           break;
@@ -561,7 +576,7 @@ void radioExchange() {
       // control
       switch (remPacket.command) {
         case SET_THROTTLE: // control VESC speed
-          setThrottle(remPacket.data);
+          if (isNormalState()) setThrottle(remPacket.data);
           break;
 
         case SET_CRUISE:
@@ -574,20 +589,123 @@ void radioExchange() {
   }
   /* End listen for transmission */
 
-  // timeout handling
-  if ( timeoutMax <= ( millis() - timeoutTimer ) )
-  {
-    debug("receiver timeout");
+}
 
-    // No speed is received within the timeout limit.
-    // setStatus(TIMEOUT);
-    connected = false;
+void autoCruise(uint8_t speed) {
 
-    setThrottle(default_throttle);
+  if (millisSince(lastCruiseControl) > 50) {
+    lastCruiseControl = millis();
 
-    timeoutTimer = millis();
+    setCruise(speed);
+  }
+
+
+}
+
+
+void stateMachine() {
+
+  switch (state) {
+
+    case IDLE: // no remote connected
+
+      debug("IDLE");
+      if (telemetry.getSpeed() >= 5) {
+        state = AUTO_WALK;
+      }
+      break;
+
+    case AUTO_WALK: // cruise without remote at 5 km/h
+
+      autoCruise(5);
+
+      if (telemetry.getSpeed() >= 15) { // NFS
+        state = AUTO_CRUISE;
+        debug("NFS");
+      } else if (telemetry.getSpeed() < 3) { // rider want to stop
+        state = IDLE;
+        debug("< 3 mh/h");
+      }
+
+      // check amps/speed !
+
+      break;
+
+    case AUTO_CRUISE: // cruise without remote at 15 km/h
+
+      debug("AUTO_CRUISE");
+
+      autoCruise(15);
+
+      if (telemetry.getSpeed() < 10) { // rider want to stop
+        state = IDLE;
+      }
+
+      // check amps/speed !
+
+      break;
+
+    case CONNECTED: // remote is connected
+
+      // timeout handling
+      if (millisSince(timeoutTimer) > timeoutMax) {
+        debug("receiver timeout");
+
+        // No speed is received within the timeout limit.
+        // setStatus(TIMEOUT);
+        connected = false;
+        state = STOPPING;
+        lastBrakeTime = millis();
+
+        // use last throttle
+        throttle = lastThrottle;
+
+        timeoutTimer = millis();
+
+        // falltrough
+
+      } else break;
+
+    case STOPPING: // emergency brake when remote has disconnected
+
+      // stop acceleration
+      if (throttle > default_throttle) {
+        throttle = default_throttle;
+        // wait?
+      }
+
+      if (secondsSince(lastBrakeTime) > AUTO_BRAKE_INTERVAL) {
+
+        // decrease throttle to brake  127 / 5 * 0.1
+        float brakeForce = constrain(default_throttle / AUTO_BRAKE_TIME * AUTO_BRAKE_INTERVAL, 0, 10);
+
+        // apply brakes
+        if (throttle > brakeForce) throttle -= brakeForce; else throttle = 0;
+        setThrottle(throttle);
+
+        debug("braking...");
+        debug(String(throttle,2));
+
+        lastBrakeTime = millis();
+      }
+
+      // check speed
+      if (throttle == 0 && telemetry.getSpeed() == 0) {
+        state = STOPPED;
+        lastBrakeTime = millis();
+      }
+
+      break;
+
+    case STOPPED:
+
+      if (secondsSince(lastBrakeTime) > AUTO_BRAKE_RELEASE) {
+        state = IDLE;
+      }
+      break;
   }
 }
+
 
 void setStatus(uint8_t code){
 
@@ -677,6 +795,9 @@ void setThrottle(uint16_t value)
     //    digitalWrite(throttlePin, HIGH);
     //    delayMicroseconds(map(throttle, 0, 255, 1000, 2000) );
     //    digitalWrite(throttlePin, LOW);
+
+    // remember throttle for smooth auto stop
+    lastThrottle = throttle;
 }
 
 void setCruise(uint8_t speed) {
@@ -745,8 +866,7 @@ float tach2dist(long tachometer) {
 
 void getUartData()
 {
-
-  if ( millis() - lastUartPull >= uartPullInterval ) {
+  if (millisSince(lastUartPull) >= uartPullInterval) {
 
     lastUartPull = millis();
 

@@ -40,9 +40,22 @@ const short timeoutMax = 500;
 uint16_t cruiseThrottle;
 uint16_t cruiseRPM;
 bool cruising;
+const float AUTO_BRAKE_INTERVAL = 0.1;  // interval of increasing break force
 
 bool connected = false;
 uint8_t throttle;
+uint8_t lastThrottle;
+
+unsigned long lastBrakeTime;
+
+// state machine
+enum states {
+  IDLE,       // remote is not connected
+  CONNECTED,  // riding with connected remote
+  STOPPING,   // emergency brake when remote has disconnected
+  STOPPED,    //
+  ENDLESS
+} state = IDLE;
 
 // fonts
 #include "fonts/Lato_Regular_7.h"
@@ -66,6 +79,7 @@ void controlStatusLed();
 void coreTask(void * pvParameters );
 bool dataAvailable();
 int getSettingValue(uint8_t index);
+void stateMachine();
 void getUartData();
 bool inRange(int val, int minimum, int maximum);
 void loadEEPROMSettings();
@@ -77,7 +91,7 @@ void setDefaultEEPROMSettings();
 void setSettingValue(int index, uint64_t value);
 void setStatus(uint8_t code);
 void setThrottle(uint16_t value);
-void setCruise(uint8_t value);
+void setCruise(uint8_t speed);
 void speedControl(uint16_t throttle , bool trigger );
 String uint64ToAddress(uint64_t number);
 String uint64ToString(uint64_t number);
