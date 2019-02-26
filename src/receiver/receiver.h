@@ -2,6 +2,7 @@
 #include <Arduino.h>
 #include "CPU.h"
 #include <Adafruit_GFX.h>
+#include <Smoothed.h>
 #include "globals.h"
 #include "radio.h"
 #include "utils.h"

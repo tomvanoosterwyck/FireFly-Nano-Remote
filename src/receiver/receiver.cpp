@@ -19,6 +19,8 @@
   Adafruit_SSD1306 display(DISPLAY_RST);
 #endif
 
+Smoothed <double> batterySensor;
+
 #include "radio.h"
 
 float signalStrength;
@@ -51,6 +53,9 @@ void setup()
   calculateRatios();
 
   pinMode(LED, OUTPUT);
+
+  // 10 seconds average
+  batterySensor.begin(SMOOTHED_EXPONENTIAL, 10);
 
   UART.setTimeout(UART_TIMEOUT);
 
@@ -872,7 +877,8 @@ void getUartData()
 
     // debug
     #ifdef FAKE_UART
-      telemetry.setVoltage(41.35);
+      batterySensor.add(41 + (rand()%40) / 100.0);
+      telemetry.setVoltage(batterySensor.get());
       telemetry.setDistance(rand()%30);
       telemetry.setSpeed(0);
       telemetry.setMotorCurrent(-21);
@@ -883,13 +889,21 @@ void getUartData()
     #endif
 
     // Only get what we need
-    if ( UART.getVescValues() )
-    {
+    if ( UART.getVescValues() ) {
       // float dutyCycleNow;
       // float ampHours;
       // float ampHoursCharged;
 
-      telemetry.setVoltage(UART.data.inpVoltage);
+      // smooth voltage readings
+      float voltage = UART.data.inpVoltage;
+      batterySensor.add(voltage);
+
+      if (batteryPackPercentage(voltage) > 0) {
+        telemetry.setVoltage(batterySensor.get());
+      } else { // ESC is off!
+        telemetry.setVoltage(voltage);
+      }
+
       telemetry.setSpeed(rpm2speed(UART.data.rpm));
       telemetry.setDistance(tach2dist(UART.data.tachometerAbs));
       telemetry.setMotorCurrent(UART.data.avgMotorCurrent);
