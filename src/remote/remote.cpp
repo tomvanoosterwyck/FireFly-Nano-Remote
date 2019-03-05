@@ -800,8 +800,15 @@ float batteryLevelVolts() {
       voltage = voltage * 2.64;
     #endif
 
+    // don't smooth at startup
+    if (secondsSince(startupTime) < 3) {
+      batterySensor.clear();
+    }
+
     // add to array
     batterySensor.add(voltage);
+
+    lastBatterySample = millis();
   }
 
   // smoothed value
