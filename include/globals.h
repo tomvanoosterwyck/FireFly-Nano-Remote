@@ -60,19 +60,29 @@ struct RemotePacket {
   // --------------
 };
 
-
 // commands
 const uint8_t SET_THROTTLE  = 1;
 const uint8_t SET_CRUISE    = 2;
 
 const uint8_t GET_CONFIG    = 3;
-const uint8_t PAIR_REQUEST  = 4;
+const uint8_t SET_STATE     = 4;
+
+// state machine
+enum BoardState {
+  IDLE,       // remote is not connected
+  PUSHING,
+  AUTO_CRUISE,
+  CONNECTED,  // riding with connected remote
+  STOPPING,   // emergency brake when remote has disconnected
+  STOPPED,    //
+  UPDATE      // update over WiFi
+};
 
 // Receiver > remote  3 bytes
 struct ReceiverPacket {
   uint8_t type;
   uint8_t chain;	// CRC from RemotePacket
-  uint8_t mode;   // Mode: Pairing, BT, ...
+  uint8_t state;   // Mode: Pairing, BT, ...
   uint8_t r2;
 };
 
@@ -114,7 +124,6 @@ struct TelemetryPacket {
   int16_t motorCurrent; // motor amps * 100
   int16_t inputCurrent; // battery amps * 100
   // -----------------
-
 
   uint16_t f2w(float f) { return f * 100; } // pack float
   float w2f(uint16_t w) { return float(w) / 100; }; // unpack float

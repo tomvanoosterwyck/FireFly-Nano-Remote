@@ -16,6 +16,8 @@ RemotePacket remPacket;
 TelemetryPacket telemetry;
 ConfigPacket boardConfig;
 
+BoardState state = IDLE;
+
 // get MAC address / CPU serial
 uint32_t boardID;
 
@@ -47,16 +49,12 @@ bool connected = false;
 uint8_t throttle;
 uint8_t lastThrottle;
 
+String wifiStatus;
+String updateStatus;
+
 unsigned long lastBrakeTime;
 
-// state machine
-enum states {
-  IDLE,       // remote is not connected
-  CONNECTED,  // riding with connected remote
-  STOPPING,   // emergency brake when remote has disconnected
-  STOPPED,    //
-  ENDLESS
-} state = IDLE;
+
 
 // fonts
 #include "fonts/Lato_Regular_7.h"
@@ -74,6 +72,7 @@ const GFXfont* fontMicro = &Org_01;         // connection screen
 
 const GFXfont* fontBig = &FreeSans12pt7b;         // connection screen
 const GFXfont* font = &FreeSans9pt7b;         // connection screen
+bool prepareUpdate();
 void acquireSetting();
 void calculateRatios();
 void controlStatusLed();

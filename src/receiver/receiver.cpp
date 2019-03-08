@@ -9,7 +9,13 @@
 #elif ESP32
   #include <LoRa.h>
 
-  // Uart serial
+  // OTA
+  #include <WiFi.h>
+  #include <ESPmDNS.h>
+  #include <WiFiUdp.h>
+  #include <ArduinoOTA.h>
+
+    // Uart serial
   HardwareSerial MySerial(1);
 #endif
 
@@ -95,6 +101,76 @@ void setup()
   #endif
 }
 
+bool prepareUpdate() {
+
+  // safety checks
+  if (telemetry.getSpeed() != 0) return false;
+
+  state = UPDATE;
+
+  // replace this with
+  const char* ssid = WIFI_NETWORK; // e.g. "FBI Surveillance Van #34";
+  const char* password = WIFI_PASSWORD; // e.g. "12345678";
+
+  wifiStatus = "Connecting:";
+  updateStatus = String(ssid);
+
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(ssid, password);
+  while (WiFi.waitForConnectResult() != WL_CONNECTED) {
+    debug("Connection Failed!");
+    delay(3000);
+    // ESP.restart();
+    return false;
+  }
+
+  // Port defaults to 3232
+  // ArduinoOTA.setPort(3232);
+
+  // Hostname defaults to esp3232-[MAC]
+  // ArduinoOTA.setHostname("myesp32");
+
+  // No authentication by default
+  // ArduinoOTA.setPassword("admin");
+
+  // Password can be set with it's md5 value as well
+  // MD5(admin) = 21232f297a57a5a743894a0e4a801fc3
+  // ArduinoOTA.setPasswordHash("21232f297a57a5a743894a0e4a801fc3");
+
+
+  ArduinoOTA
+    .onStart([]() {
+      String type;
+      if (ArduinoOTA.getCommand() == U_FLASH)
+        type = "sketch";
+      else // U_SPIFFS
+        type = "filesystem";
+
+      // NOTE: if updating SPIFFS this would be the place to unmount SPIFFS using SPIFFS.end()
+      updateStatus = "Start updating " + type;
+    })
+    .onEnd([]() {
+      Serial.println("\nEnd");
+    })
+    .onProgress([](unsigned int progress, unsigned int total) {
+      updateStatus = "Progress: " + String(progress / (total / 100), 0) + "%";
+      Serial.println(updateStatus);
+    })
+    .onError([](ota_error_t error) {
+      Serial.printf("Error[%u]: ", error);
+      if (error == OTA_AUTH_ERROR) updateStatus = "Auth Failed";
+      else if (error == OTA_BEGIN_ERROR) updateStatus = "Begin Failed";
+      else if (error == OTA_CONNECT_ERROR) updateStatus = "Connect Failed";
+      else if (error == OTA_RECEIVE_ERROR) updateStatus = "Receive Failed";
+      else if (error == OTA_END_ERROR) updateStatus = "End Failed";
+    });
+
+  ArduinoOTA.begin();
+
+  wifiStatus = "IP: " + WiFi.localIP().toString();
+  updateStatus = "Waiting...";
+}
+
 int getStringWidth(String s) {
 
   int16_t x1, y1;
@@ -127,6 +203,7 @@ String getState() {
     case ENDLESS: return "Auto";
     case AUTO_WALK: return "Cruise 5";
     case AUTO_CRUISE: return "Cruise 15";
+    case UPDATE: return "Update";
   }
 }
 
@@ -151,13 +228,29 @@ void updateScreen() {
       display.println("SPD: " + String(telemetry.getSpeed(),1));
       break;
 
-    default:
+    case UPDATE:
+      debug("draw update screen");
       display.setTextColor(WHITE);
-      display.setFont(fontDigital);
+      display.setFont(fontDesc);
 
-      display.setCursor(0, 20);
-      display.print("THR: " + String(map(throttle, 0, 255, -100, 100)) + "%");
-      display.print("SPD: " + String(telemetry.getSpeed(),1) + " k");
+      display.setCursor(0, 12);
+
+      display.println(wifiStatus);
+      display.println(updateStatus);
+      break;
+
+    default:
+      if (throttle == default_throttle && telemetry.getSpeed() == 0) {
+        drawBattery();
+      } else { // riding
+        display.setTextColor(WHITE);
+        display.setFont(fontDigital);
+
+        display.setCursor(0, 20);
+        display.println("THR: " + String(map(throttle, 0, 255, -100, 100)) + "%");
+        display.println("SPD: " + String(telemetry.getSpeed(),1) + " k");
+      }
+      break;
   }
 
   // ---- status ----
@@ -341,7 +434,9 @@ void loop() // core 1
   #ifdef ARDUINO_SAMD_ZERO
     radioExchange();
     stateMachine();
+
   #elif RECEIVER_SCREEN
+    if (state == UPDATE) ArduinoOTA.handle();
     updateScreen(); // 25 ms
     vTaskDelay(1);
   #endif
@@ -486,12 +581,14 @@ bool sendData(uint8_t response) {
     debug("Sending ack only");
     telemetry.header.type = response;
     telemetry.header.chain = remPacket.counter;
+    telemetry.header.state = state;
     return sendPacket(&telemetry, sizeof(telemetry));
 
   case TELEMETRY:
     debug("Sending telemetry");
     telemetry.header.type = response;
     telemetry.header.chain = remPacket.counter;
+    telemetry.header.state = state;
 
     if (sendPacket(&telemetry, sizeof(telemetry))) {
       telemetryUpdated = false;
@@ -528,8 +625,31 @@ bool dataAvailable() {
   #endif
 }
 
-bool isNormalState() {
-  return state != STOPPING;
+void setState(BoardState newState) {
+  state = newState;
+
+  switch (state) {
+
+    case IDLE: break;
+
+    case PUSHING:
+      timeSpeedReached = millis();
+      break;
+
+    case AUTO_CRUISE:
+      cruiseControlStart = millis();
+      break;
+
+    case CONNECTED: break;
+
+    case STOPPING:
+    case STOPPED:
+      lastBrakeTime = millis();
+      break;
+
+    case UPDATE: break;
+
+  }
 }
 
 void radioExchange() {
@@ -555,15 +675,33 @@ void radioExchange() {
 
       switch (remPacket.command) {
         case SET_THROTTLE:
-          if (isNormalState) { // recover from auto stop
-            state = CONNECTED;
-          } // else response = AUTO_STOP
+          switch (state) {
+            case UPDATE: break; //
+            case PUSHING:
+            case STOPPING:
+            case AUTO_CRUISE: // monitor data
+              if (remPacket.data < default_throttle) {
+                setState(CONNECTED);
+              }
+              break;
 
+            default:
+              setState(CONNECTED);
+          }
           // falltrough
         case SET_CRUISE:
           if (telemetryUpdated) { response = TELEMETRY; }
+
+          break;
+        case SET_STATE:
+          switch (remPacket.data) {
+            case UPDATE:
+              prepareUpdate();
+              break;
+          }
           break;
         case GET_CONFIG: response = CONFIG; break;
+
       }
 
       // send config after power on
@@ -581,7 +719,10 @@ void radioExchange() {
       // control
       switch (remPacket.command) {
         case SET_THROTTLE: // control VESC speed
-          if (isNormalState()) setThrottle(remPacket.data);
+          // ignore during auto-stop/update/...
+          if (state == CONNECTED) {
+            setThrottle(remPacket.data);
+          }
           break;
 
         case SET_CRUISE:
@@ -704,10 +845,13 @@ void stateMachine() {
 
     case STOPPED:
 
-      if (secondsSince(lastBrakeTime) > AUTO_BRAKE_RELEASE) {
-        state = IDLE;
-      }
+      // release breaks after a few seconds
+      if (secondsSince(lastBrakeTime) > AUTO_BRAKE_RELEASE) setState(IDLE);
       break;
+
+    case UPDATE:
+      break;
+
   }
 }
 

@@ -550,6 +550,9 @@ bool receiveData() {
     return false;
   }
 
+  // monitor board state:
+  receiverState = static_cast<BoardState>(recvPacket.state);
+
   // response type
   switch (recvPacket.type) {
     case ACK_ONLY:
@@ -662,8 +665,15 @@ void prepatePacket() {
       remPacket.data = round(throttle);
       break;
     case MODE_MENU:
-      remPacket.command = SET_THROTTLE;
-      remPacket.data = default_throttle;
+      if (requestUpdate) {
+        debug("requestUpdate");
+        remPacket.command = SET_STATE;
+        remPacket.data = UPDATE;
+        requestUpdate = false;
+      } else {
+        remPacket.command = SET_THROTTLE;
+        remPacket.data = default_throttle;
+      }
       break;
     }
   }
@@ -904,8 +914,8 @@ void drawShutdownScreen()
   drawHLine(32 - w, 70, w * 2); // top line
 }
 
-void drawConnectingScreen()
-{
+void drawConnectingScreen() {
+
   display.setRotation(DISPLAY_ROTATION);
 
   int y = 8;
@@ -1137,14 +1147,19 @@ void drawSettingsMenu() {
       break;
 
     case MENU_BOARD:
+      switch (subMenuItem) {
+      case BOARD_UPDATE:
+        requestUpdate = true;
+        menuPage = MENU_MAIN; // go back
+        currentMenu = 0;
+        break;
+      }
 
       break;
 
     }
 
-
     break;
-
 
   }
 
@@ -1290,6 +1305,7 @@ void drawMainPage() {
 
   int x = 0;
   int y = 37;
+  int h;
 
   //  display.drawFrame(0,0,64,128);
 
@@ -1297,28 +1313,38 @@ void drawMainPage() {
   value = speed();
   float speedMax = boardConfig.maxSpeed;
 
-  String m;
-
-  if (controlMode == MODE_CRUISE) m = String(cruiseSpeed);
-  else m = "km/h";
+  String m = "km/h";
 
   drawStringCenter(String(value, 0), m, y);
 
-  y = 48;
-  // speedometer graph height array
-  uint8_t a[16] = {3, 3, 4, 4, 5, 6, 7, 8, 10,
-                   11, 13, 15, 17, 20, 24, 28
-                  };
-  uint8_t h;
+  if (receiverState == CONNECTED) {
 
-  for (uint8_t i = 0; i < 16; i++) {
-    h = a[i];
-    if (speedMax / 16 * i <= value) {
-      drawVLine(x + i * 4 + 2, y - h, h);
-    } else {
-      drawPixel(x + i * 4 + 2, y - h);
-      drawPixel(x + i * 4 + 2, y - 1);
+    // speedometer graph height array
+    uint8_t a[16] = {3, 3, 4, 4, 5, 6, 7, 8, 10,
+                     11, 13, 15, 17, 20, 24, 28
+                    };
+    y = 48;
+
+    for (uint8_t i = 0; i < 16; i++) {
+      h = a[i];
+      if (speedMax / 16 * i <= value) {
+        drawVLine(x + i * 4 + 2, y - h, h);
+      } else {
+        drawPixel(x + i * 4 + 2, y - h);
+        drawPixel(x + i * 4 + 2, y - 1);
+      }
     }
+  } else {
+    switch (receiverState) {
+      case STOPPING: m = "Stopping"; break;
+      case STOPPED: m = "Stopped"; break;
+      case PUSHING: m = "Pushing"; break;
+      case AUTO_CRUISE: m = "Cruise"; break;
+      case UPDATE: m = "Update"; break;
+      default: m = "?";
+    }
+
+    drawString(m, -1, 50, fontDesc);
   }
 
   // --- Battery ---

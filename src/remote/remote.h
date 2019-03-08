@@ -100,11 +100,14 @@ float throttle;
 const uint8_t hallNoiseMargin = 8;
 byte hallCenterMargin = 0;
 
+BoardState receiverState;
 
 // OLED display
 unsigned long lastSignalBlink;
 bool signalBlink = false;
 byte counter = 0;
+
+unsigned long startupTime;
 
 unsigned long lastInteraction; // last time controls were used
 unsigned long stopTime;
@@ -118,8 +121,6 @@ short failCount;
 unsigned long lastMarker;
 unsigned long lastDelay;
 
-unsigned long startupTime;
-
 // power
 bool power = true;
 uint8_t shutdownReq = 0;
@@ -129,6 +130,7 @@ float cruiseSpeed = 0;
 int cruiseStartThrottle;
 int cruiseThrottle;
 
+bool requestUpdate = false;
 
 // menu
 enum menu_page {
@@ -138,19 +140,21 @@ enum menu_page {
 } menuPage = MENU_MAIN;
 
 
-const byte subMenus = 6;
+const byte subMenus = 7;
 const byte mainMenus = 3;
 
 
 String MENUS[mainMenus][subMenus] = {
-    { "Info", "Debug", "", "", "", "" },
-    { "Remote", "Calibrate", "Pair", "Auto off", "", "" },
-    { "Board", "Max Speed", "Range", "Cells", "Battery", "Motor" }
+    { "Info", "Debug", "", "", "", "", "" },
+    { "Remote", "Calibrate", "Pair", "Auto off", "", "", "" },
+    { "Board", "Update",  "Max Speed", "Range", "Cells", "Battery", "Motor" }
   };
 
 enum menu_main { MENU_INFO, MENU_REMOTE, MENU_BOARD };
 enum menu_info { INFO_DEBUG };
 enum menu_remote { REMOTE_CALIBRATE, REMOTE_PAIR, REMOTE_SLEEP_TIMER };
+enum menu_board { BOARD_UPDATE };
+
 
 float currentMenu = 0;
 int subMenu = 0;
