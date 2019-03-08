@@ -937,8 +937,12 @@ void drawConnectingScreen()
   drawString((triggerActive() ? "T " : "0 ") + String(hallValue) + " " + String(throttle, 0), -1, y, fontMicro);
 
   // remote battery
-  y += 12;
-  drawString(String(batteryLevel(), 0) + "% " + String(batteryLevelVolts(), 2) + "v", -1, y, fontMicro);
+  int level = batteryLevel();
+
+  if (level > 20 || signalBlink) { // blink
+    y += 12;
+    drawString(String(level) + "% " + String(batteryLevelVolts(), 2) + "v", -1, y, fontMicro);
+  }
 
 }
 
@@ -1455,13 +1459,24 @@ void drawBatteryLevel() {
 
   uint8_t level = batteryLevel(); // 0 - 100
 
+  // blinking
+  if (level < 20) {
+    if (millisSince(lastSignalBlink) > 500) {
+        signalBlink = !signalBlink;
+        lastSignalBlink = millis();
+      }
+  } else signalBlink = false;
+
+  // blink
+  if (signalBlink) return;
+
   drawFrame(x, y, 18, 9);
   drawBox(x + 18, y + 2, 2, 5);
 
   // battery level
   drawBox(x + 2, y + 2, level * 14 / 100, 5);
 
-  if (level <= 9) {
+  if (level <= 9) { // < 10%
     drawString(String(level), x + 7, y + 6, fontMicro);
   }
 
