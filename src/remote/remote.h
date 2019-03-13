@@ -18,6 +18,11 @@
 
   #include <LoRa.h>
   #include <driver/adc.h>
+
+  // brownout
+  #include <driver/rtc_cntl.h>
+  #include <soc/rtc_cntl_reg.h>
+
   #include <esp_sleep.h>
   #include <esp_deep_sleep.h>
 
@@ -124,6 +129,8 @@ unsigned long lastDelay;
 // power
 bool power = true;
 uint8_t shutdownReq = 0;
+int batteryLevel = 0; // remote battery
+static intr_handle_t s_rtc_isr_handle;
 
 // cruise control
 float cruiseSpeed = 0;
@@ -231,11 +238,12 @@ const GFXfont* fontPico = &Segment6pt7b;      //
 const GFXfont* fontDesc = &Dialog_plain_9;    // km/h
 const GFXfont* fontMicro = &Org_01_5p;         // connection screen
 
-float batteryLevel();
+float getBatteryLevel();
 float batteryLevelVolts();
 float batteryPackPercentage(float voltage );
 void calculateThrottle();
 int checkButton();
+void checkBatteryLevel();
 void coreTask(void * pvParameters );
 int cruiseControl();
 void drawBatteryLevel();

@@ -33,6 +33,38 @@ Smoothed <double> batterySensor;
 
 #include "radio.h"
 
+static void rtc_isr(void* arg)
+{
+    uint32_t status = REG_READ(RTC_CNTL_INT_ST_REG);
+    if (status & RTC_CNTL_BROWN_OUT_INT_ENA_M) {
+
+      digitalWrite(LED, HIGH);
+      REG_WRITE(RTC_CNTL_BROWN_OUT_REG, 0);
+
+    }
+    REG_WRITE(RTC_CNTL_INT_CLR_REG, status);
+}
+
+#define BROWNOUT_DET_LVL 0
+
+void brownoutInit() {
+
+  // enable brownout detector
+  REG_WRITE(RTC_CNTL_BROWN_OUT_REG,
+          RTC_CNTL_BROWN_OUT_ENA /* Enable BOD */
+          | RTC_CNTL_BROWN_OUT_PD_RF_ENA /* Automatically power down RF */
+          /* Reset timeout must be set to >1 even if BOR feature is not used */
+          | (2 << RTC_CNTL_BROWN_OUT_RST_WAIT_S)
+          | (BROWNOUT_DET_LVL << RTC_CNTL_DBROWN_OUT_THRES_S));
+
+  // install ISR
+  REG_WRITE(RTC_CNTL_INT_ENA_REG, 0);
+  REG_WRITE(RTC_CNTL_INT_CLR_REG, UINT32_MAX);
+  esp_err_t err = esp_intr_alloc(ETS_RTC_CORE_INTR_SOURCE, 0, &rtc_isr, NULL, &s_rtc_isr_handle);
+
+  REG_SET_BIT(RTC_CNTL_INT_ENA_REG, RTC_CNTL_BROWN_OUT_INT_ENA_M);
+}
+
 void setup() {
 
   startupTime = millis();
@@ -45,11 +77,12 @@ void setup() {
 
   #ifdef PIN_VIBRO
     pinMode(PIN_VIBRO, OUTPUT);
+    digitalWrite(PIN_VIBRO, LOW);
   #endif
   #ifdef PIN_BATTERY
     pinMode(PIN_BATTERY, INPUT);
     #ifdef ESP32
-     // enable battery probe
+      // enable battery probe
       pinMode(VEXT, OUTPUT);
       digitalWrite(VEXT, LOW);
       adcAttachPin(PIN_BATTERY);
@@ -68,6 +101,7 @@ void setup() {
     // config throttle
     pinMode(PIN_THROTTLE, INPUT);
   #elif ESP32
+    brownoutInit(); // avoid low voltage boot loop
     initRadio();
     // config throttle
     adc1_config_width(ADC_WIDTH_BIT_10);
@@ -111,6 +145,7 @@ void loop() { // core 1
     radioLoop();
   #endif
 
+  checkBatteryLevel();
   handleButtons();
 
   // Call function to update display
@@ -126,6 +161,12 @@ void radioLoop() {
 
   calculateThrottle();
   transmitToReceiver();
+}
+
+void checkBatteryLevel() {
+
+  batteryLevel = getBatteryLevel();
+
 }
 
 void keepAlive() {
@@ -243,7 +284,6 @@ void handleButtons() {
     break;
 
   case HOLD: // start shutdown
-    vibrate(100);
     break;
 
   case LONG_HOLD: // shutdown confirmed
@@ -828,7 +868,7 @@ float batteryLevelVolts() {
 /*
    Calculate the remotes battery level
 */
-float batteryLevel() {
+float getBatteryLevel() {
 
   float voltage = batteryLevelVolts();
 
@@ -947,7 +987,7 @@ void drawConnectingScreen() {
   drawString((triggerActive() ? "T " : "0 ") + String(hallValue) + " " + String(throttle, 0), -1, y, fontMicro);
 
   // remote battery
-  int level = batteryLevel();
+  int level = batteryLevel;
 
   if (level > 20 || signalBlink) { // blink
     y += 12;
@@ -1483,10 +1523,8 @@ void drawBatteryLevel() {
   int x = 2;
   int y = 2;
 
-  uint8_t level = batteryLevel(); // 0 - 100
-
   // blinking
-  if (level < 20) {
+  if (batteryLevel < 20) {
     if (millisSince(lastSignalBlink) > 500) {
         signalBlink = !signalBlink;
         lastSignalBlink = millis();
@@ -1500,10 +1538,10 @@ void drawBatteryLevel() {
   drawBox(x + 18, y + 2, 2, 5);
 
   // battery level
-  drawBox(x + 2, y + 2, level * 14 / 100, 5);
+  drawBox(x + 2, y + 2, batteryLevel * 14 / 100, 5);
 
-  if (level <= 9) { // < 10%
-    drawString(String(level), x + 7, y + 6, fontMicro);
+  if (batteryLevel <= 9) { // < 10%
+    drawString(String(batteryLevel), x + 7, y + 6, fontMicro);
   }
 
 }
