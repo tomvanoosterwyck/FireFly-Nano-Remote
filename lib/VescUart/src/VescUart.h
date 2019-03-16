@@ -39,20 +39,20 @@ class VescUart
 		VescUart(void);
 
 		/** Variabel to hold measurements returned from VESC */
-		dataPackage data; 
+		dataPackage data;
 
 		/** Variabel to hold nunchuck values */
-		nunchuckPackage nunchuck; 
+		nunchuckPackage nunchuck;
 
 		/**
 		 * @brief      Set the serial port for uart communication
-		 * @param      port  - Reference to Serial port (pointer) 
+		 * @param      port  - Reference to Serial port (pointer)
 		 */
 		void setSerialPort(HardwareSerial* port);
 
 		/**
 		 * @brief      Set the serial port for debugging
-		 * @param      port  - Reference to Serial port (pointer) 
+		 * @param      port  - Reference to Serial port (pointer)
 		 */
 		void setDebugPort(Stream* port);
 
@@ -61,7 +61,7 @@ class VescUart
 		 *
 		 * @return     True if successfull otherwise false
 		 */
-		bool getVescValues(void);
+		bool getVescValues(uint8_t comm);
 
 
 		/**
@@ -112,12 +112,12 @@ class VescUart
 		 */
 		void printVescValues(void);
 
-	private: 
+	private:
 
 		/** Variabel to hold the reference to the Serial object to use for UART */
 		HardwareSerial* serialPort = NULL;
 
-		/** Variabel to hold the reference to the Serial object to use for debugging. 
+		/** Variabel to hold the reference to the Serial object to use for debugging.
 		  * Uses the class Stream instead of HarwareSerial */
 		Stream* debugPort = NULL;
 

@@ -1033,7 +1033,7 @@ void getUartData()
     #endif
 
     // Only get what we need
-    if ( UART.getVescValues() ) {
+    if ( UART.getVescValues(VESC_COMMAND) ) {
       // float dutyCycleNow;
       // float ampHours;
       // float ampHoursCharged;

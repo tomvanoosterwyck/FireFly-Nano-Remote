@@ -2,12 +2,14 @@
 #define _CONST_H
 
 #include <Arduino.h>
+#include <datatypes.h>
 
 #define DEBUG // Uncomment DEBUG if you need to debug the remote
 
 // #define FAKE_UART // Uncomment if VESC not connected
 
-#define UNITY //
+// const COMM_PACKET_ID VESC_COMMAND = COMM_GET_VALUES; // VESC
+const COMM_PACKET_ID VESC_COMMAND = COMM_GET_UNITY_VALUES; // Enertion Unity
 
 /*
   Connect receiver and open Serial Monitor (Cmd+Shift+M),

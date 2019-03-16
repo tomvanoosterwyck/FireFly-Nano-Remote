@@ -276,7 +276,48 @@ bool VescUart::processReadPacket(uint8_t * message) {
 			data.tachometerAbs 		= buffer_get_int32(message, &ind);
 			return true;
 
-		break;
+		case COMM_GET_UNITY_VALUES:
+
+			data.tempFET   = buffer_get_float16(message, 10.0, &ind); // mc_interface_temp_fet_filtered
+			buffer_get_float16(message, 10.0, &ind); // mc_interface_temp_fet_filtered2
+
+			data.tempMotor = buffer_get_float16(message, 10.0, &ind); // mc_interface_temp_motor_filtered
+			buffer_get_float16(message, 10.0, &ind); // mc_interface_temp_motor_filtered2
+
+			data.avgMotorCurrent 	= buffer_get_float32(message, 100.0, &ind); // mc_interface_read_reset_avg_motor_current
+			buffer_get_float32(message, 100.0, &ind); // mc_interface_read_reset_avg_motor_current
+
+			data.avgInputCurrent 	= buffer_get_float32(message, 100.0, &ind); // mc_interface_read_reset_avg_input_current
+
+			ind += 16; // Skip the next 16 bytes
+			// 	buffer_append_float32(send_buffer, mc_interface_read_reset_avg_id(), 1e2, &ind);
+			// 	buffer_append_float32(send_buffer, mc_interface_read_reset_avg_id2(), 1e2, &ind); //
+			// 	buffer_append_float32(send_buffer, mc_interface_read_reset_avg_iq(), 1e2, &ind);
+			// 	buffer_append_float32(send_buffer, mc_interface_read_reset_avg_iq2(), 1e2, &ind); //
+
+			data.dutyCycleNow 		= buffer_get_float16(message, 1000.0, &ind); // mc_interface_get_duty_cycle_now
+			buffer_get_float16(message, 1000.0, &ind);
+
+			data.rpm 				= buffer_get_int32(message, &ind); // mc_interface_get_rpm
+			buffer_get_int32(message, &ind);
+
+			data.inpVoltage 		= buffer_get_float16(message, 10.0, &ind);
+			data.ampHours 			= buffer_get_float32(message, 10000.0, &ind);
+			data.ampHoursCharged 	= buffer_get_float32(message, 10000.0, &ind);
+
+			ind += 8; // Skip the next 8 bytes
+			// 	buffer_append_float32(send_buffer, mc_interface_get_watt_hours(false), 1e4, &ind);
+			// 	buffer_append_float32(send_buffer, mc_interface_get_watt_hours_charged(false), 1e4, &ind);
+
+			data.tachometer 		= buffer_get_int32(message, &ind); // mc_interface_get_tachometer_value
+			buffer_get_int32(message, &ind);
+
+			data.tachometerAbs 		= buffer_get_int32(message, &ind); // mc_interface_get_tachometer_abs_value
+			buffer_get_int32(message, &ind);
+
+			// 	send_buffer[ind++] = mc_interface_get_fault();
+			return true;
+
 
 		default:
 			return false;
@@ -284,9 +325,10 @@ bool VescUart::processReadPacket(uint8_t * message) {
 	}
 }
 
-bool VescUart::getVescValues(void) {
+bool VescUart::getVescValues(uint8_t comm) {
 
-	uint8_t command[1] = { COMM_GET_VALUES };
+	uint8_t command[1] = { comm }; // COMM_GET_VALUES or COMM_GET_UNITY_VALUE
+
 	uint8_t payload[256];
 
 	packSendPayload(command, 1);
@@ -313,7 +355,7 @@ void VescUart::setNunchuckValues() {
 	payload[ind++] = nunchuck.valueY;
 	buffer_append_bool(payload, nunchuck.lowerButton, &ind);
 	buffer_append_bool(payload, nunchuck.upperButton, &ind);
-	
+
 	// Acceleration Data. Not used, Int16 (2 byte)
 	payload[ind++] = 0;
 	payload[ind++] = 0;
@@ -329,6 +371,26 @@ void VescUart::setNunchuckValues() {
 	}
 
 	packSendPayload(payload, 11);
+
+	// second VESC
+	// payload[ind++] = COMM_FORWARD_CAN;
+	// payload[ind++] = 0; // Second VESC ID
+	// payload[ind++] = COMM_SET_CHUCK_DATA;
+	// payload[ind++] = nunchuck.valueX;
+	// payload[ind++] = nunchuck.valueY;
+	// buffer_append_bool(payload, nunchuck.lowerButton, &ind);
+	// buffer_append_bool(payload, nunchuck.upperButton, &ind);
+	//
+	// // Acceleration Data. Not used, Int16 (2 byte)
+	// payload[ind++] = 0;
+	// payload[ind++] = 0;
+	// payload[ind++] = 0;
+	// payload[ind++] = 0;
+	// payload[ind++] = 0;
+	// payload[ind++] = 0;
+	//
+	// packSendPayload(payload, 11+2);
+
 }
 
 void VescUart::setCurrent(float current) {
