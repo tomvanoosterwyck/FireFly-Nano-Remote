@@ -25,8 +25,8 @@ unsigned long millisSince(unsigned long time) {
   return millis() - time;
 }
 
-unsigned long secondsSince(unsigned long time) {
-  return millisSince(time) / 1000;
+double secondsSince(unsigned long time) {
+  return millisSince(time) / 1000.0;
 }
 
 void printStruct(const void * data, byte len) {

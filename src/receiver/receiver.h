@@ -15,8 +15,9 @@ ReceiverPacket recvPacket;
 RemotePacket remPacket;
 TelemetryPacket telemetry;
 ConfigPacket boardConfig;
+InfoPacket boardInfo;
 
-BoardState state = IDLE;
+AppState state = IDLE;
 
 // get MAC address / CPU serial
 uint32_t boardID;
@@ -26,9 +27,10 @@ bool justStarted = true;
 
 // send only updated telemetry
 bool telemetryUpdated = false;
+unsigned long telemetryTime = 0;
 
 // Last time data was pulled from VESC
-unsigned long lastUartPull;
+unsigned long lastUartPull = 0;
 
 // Variables to hold values for speed and distance calculation
 float gearRatio;
@@ -43,7 +45,13 @@ const short timeoutMax = 500;
 uint16_t cruiseThrottle;
 uint16_t cruiseRPM;
 bool cruising;
-const float AUTO_BRAKE_INTERVAL = 0.1;  // interval of increasing break force
+unsigned long lastCruiseControl; //
+unsigned long cruiseControlStart;
+
+// Endless ride
+unsigned long timeSpeedReached;
+
+const float AUTO_BRAKE_INTERVAL = 0.1;  // increase the brake force every 0.1s
 
 bool connected = false;
 uint8_t throttle;
@@ -89,6 +97,7 @@ bool sendData(uint8_t response);
 void sendUartData();
 void setDefaultEEPROMSettings();
 void setSettingValue(int index, uint64_t value);
+void setState(AppState newState);
 void setStatus(uint8_t code);
 void setThrottle(uint16_t value);
 void setCruise(uint8_t speed);

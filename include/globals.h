@@ -4,25 +4,39 @@
 #include <Arduino.h>
 #include <datatypes.h>
 
-#define DEBUG // Uncomment DEBUG if you need to debug the remote
+#define FAKE_UART // Comment out after pairing the remote and connecting VESC
 
-// #define FAKE_UART // Uncomment if VESC not connected
+#define DEBUG // Uncomment DEBUG if you need to debug the remote
 
 // const COMM_PACKET_ID VESC_COMMAND = COMM_GET_VALUES; // VESC
 const COMM_PACKET_ID VESC_COMMAND = COMM_GET_UNITY_VALUES; // Enertion Unity
 
+// If you know the receiver ID you can specify it here.
+// Otherwise the receiver will pair automatically in FAKE_UART mode.
+const uint32_t boardAddress = 0x00000000;
+
 /*
-  Connect receiver and open Serial Monitor (Cmd+Shift+M),
-  it will display the correct chip ID.
+  Endless ride - when remote is off and speed is over 12 km/h for 3 seconds,
+  cruise control will be activated when speed drops below 12 km/h.
+
+  Slide the board backwards while standing on it or foot brake
+  to produce a spike in the current and stop the board.
 */
-// const uint32_t boardAddress = 0xc89cb368; // Feather
-// const uint32_t boardAddress = 0x88bf713c; // TTGO
-// const uint32_t boardAddress = 0xfea4ae30; // TTGO w/o screen
-const uint32_t boardAddress = 0x8cbf713c; // Heltec
+const bool  AUTO_CRUISE_ON = false;     // disabled by default
+const float PUSHING_SPEED = 12.0;       // km/h
+const float PUSHING_TIME = 3.0;         // seconds
+const float CRUISE_CURRENT_SPIKE = 5.0; // Amps
+
+// boad will stop after 30s if current is low
+const float AUTO_CRUISE_TIME = 30.0;    // seconds
+const float CRUISE_CURRENT_LOW = 5.0;   // Amps
+
+// auto stop if remote is off and speed is over 20 km/h
+const float MAX_PUSHING_SPEED = 20.0;   // km/h
 
 // Auto stop (in seconds)
-const float AUTO_BRAKE_TIME = 5.0;      // time to apply the full break
-const int AUTO_BRAKE_RELEASE = 5;       // time to release breaks after the full stop
+const float AUTO_BRAKE_TIME = 5.0;    // time to apply the full brakes
+const int AUTO_BRAKE_RELEASE = 5;     // time to release brakes after the full stop
 
 // UART
 const int UART_SPEED = 115200;
@@ -32,6 +46,9 @@ const int REMOTE_RX_TIMEOUT = 20; // ms
 
 const int REMOTE_LOCK_TIMEOUT = 10; // seconds to lock throttle when idle
 const int REMOTE_SLEEP_TIMEOUT = 180; // seconds to go to sleep mode
+
+// turn off display if battery < 15%
+const int DISPLAY_BATTERY_MIN = 15;
 
 // VESC current, for graphs only
 const int MOTOR_MIN = -30;
@@ -49,7 +66,7 @@ const int WHEEL_DIAMETER = 90;
 const int WHEEL_PULLEY = 1;
 const int MOTOR_PULLEY = 1;
 
-#define VERSION 1
+#define VERSION 2
 
 // Remote > receiver
 struct RemotePacket {
@@ -69,15 +86,22 @@ const uint8_t SET_CRUISE    = 2;
 const uint8_t GET_CONFIG    = 3;
 const uint8_t SET_STATE     = 4;
 
+
 // state machine
-enum BoardState {
+enum AppState {
   IDLE,       // remote is not connected
+  NORMAL,
   PUSHING,
-  AUTO_CRUISE,
+  CRUISE,
+  ENDLESS,
   CONNECTED,  // riding with connected remote
+  CONNECTING,
+  MENU,
   STOPPING,   // emergency brake when remote has disconnected
-  STOPPED,    //
-  UPDATE      // update over WiFi
+  STOPPED,
+  PAIRING,
+  UPDATE,     // update over WiFi
+  COASTING    // waiting for board to slowdown
 };
 
 // Receiver > remote  3 bytes
@@ -92,24 +116,23 @@ struct ReceiverPacket {
 const uint8_t ACK_ONLY  = 1;
 const uint8_t TELEMETRY = 2;
 const uint8_t CONFIG    = 3;
-const uint8_t PAIRING   = 4;
+const uint8_t BOARD_ID  = 4;
 
-struct AckPacket {
+struct InfoPacket {
   ReceiverPacket header;
   // --------------  // keep 4 byte alignment!
+  int32_t id;
+  // --------------
   uint8_t r0;
-  uint8_t r1;        // UART delay?
+  uint8_t r1;
   uint16_t r2;
   // --------------
-  uint16_t r3;       // temperature?
+  uint16_t r3;
   uint16_t r4;
-  // --------------
-  int16_t r5;
-  int16_t r6;
   // --------------
 };
 
-const int PACKET_SIZE = sizeof(AckPacket);
+const int PACKET_SIZE = sizeof(InfoPacket);
 const int CRC_SIZE = 1;
 
 // New VESC values 12 + 3

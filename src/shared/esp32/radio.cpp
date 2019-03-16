@@ -32,7 +32,7 @@ void initRadio() {
 
   LoRa.setSignalBandwidth(500E3);
   // set tx power
-  LoRa.setTxPower(14);
+  LoRa.setTxPower(20);
 
   LoRa.setSpreadingFactor(6);
 

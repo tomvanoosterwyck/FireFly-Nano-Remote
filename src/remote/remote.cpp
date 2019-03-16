@@ -33,6 +33,7 @@ Smoothed <double> batterySensor;
 
 #include "radio.h"
 
+#ifdef ESP32
 static void rtc_isr(void* arg)
 {
     uint32_t status = REG_READ(RTC_CNTL_INT_ST_REG);
@@ -64,6 +65,7 @@ void brownoutInit() {
 
   REG_SET_BIT(RTC_CNTL_INT_ENA_REG, RTC_CNTL_BROWN_OUT_INT_ENA_M);
 }
+#endif
 
 void setup() {
 
@@ -162,7 +164,7 @@ void checkBatteryLevel() {
 
   batteryLevel = getBatteryLevel();
 
-  if (batteryLevel > 10) {
+  if (batteryLevel >= DISPLAY_BATTERY_MIN) {
     if (!displayOn) {
       displayOn = true;
       // turn on
@@ -183,12 +185,13 @@ void keepAlive() {
   lastInteraction = millis();
 }
 
-void calculateThrottle()
-{
+void calculateThrottle() {
+
   int position = readThrottlePosition();
 
   switch (state) {
 
+  case PAIRING:
   case CONNECTING:
     throttle = position; // show debug info
     break;
@@ -201,6 +204,7 @@ void calculateThrottle()
         // dead man switch activated
         state = NORMAL;
         throttle = position;
+        stopTime = millis();
         debug("dead man switch activated");
       } else {
         // locked, ignore
@@ -213,7 +217,6 @@ void calculateThrottle()
 
   case NORMAL:
     throttle = position;
-    debug("NORMAL");
 
     // activate cruise mode?
     if (triggerActive() && throttle == default_throttle && speed() > 3) {
@@ -279,22 +282,32 @@ void handleButtons() {
 
   case CLICK:
     keepAlive();
-    // in menu
-    if (page == PAGE_MENU) {
 
-      if (menuPage != MENU_MAIN) {
-        menuPage = MENU_MAIN; // go back
-        currentMenu = 0;
-        display.setRotation(DISPLAY_ROTATION); // back to vertical
-        calibrationStage = CALIBRATE_CENTER;
-        return;
-      }
-      // exit menu
-      controlMode = menuWasUsed ? MODE_IDLE : MODE_NORMAL;
+    switch (state) {
+      case CONNECTING:
+        state = PAIRING; // switch to pairing
+        break;
+
+      case PAIRING:
+        state = CONNECTING; // switch to connecting
+        break;
+
+      default:
+        if (page == PAGE_MENU) { // in menu
+
+          if (menuPage != MENU_MAIN) {
+            display.setRotation(DISPLAY_ROTATION); // back to vertical
+            calibrationStage = CALIBRATE_CENTER;
+            return backToMainMenu();
+          }
+          // exit menu
+          state = menuWasUsed ? IDLE : NORMAL;
+        }
+
+        // switch pages
+        page = static_cast<ui_page>((page + 1) % PAGE_MAX);
     }
 
-    // switch pages
-    page = static_cast<ui_page>((page + 1) % PAGE_MAX);
     break;
 
   case HOLD: // start shutdown
@@ -453,6 +466,7 @@ void loadSettings() {
     settings.minHallValue = preferences.getShort("MIN_HALL",  MIN_HALL);
     settings.centerHallValue = preferences.getShort("CENTER_HALL", CENTER_HALL);
     settings.maxHallValue = preferences.getShort("MAX_HALL", MAX_HALL);
+    settings.boardID = preferences.getLong("BOARD_ID", 0);
     preferences.end();
 
   #elif ARDUINO_SAMD_ZERO
@@ -469,6 +483,10 @@ void loadSettings() {
   #endif
 
   remPacket.version = VERSION;
+
+  debug("board id: "+ String(settings.boardID));
+
+  if (settings.boardID == 0) { state = PAIRING; }
 }
 
 // only after chamge
@@ -481,6 +499,7 @@ void saveSettings() {
     preferences.putShort("MIN_HALL",  settings.minHallValue);
     preferences.putShort("CENTER_HALL", settings.centerHallValue);
     preferences.putShort("MAX_HALL", settings.maxHallValue);
+    preferences.putLong("BOARD_ID", settings.boardID);
     preferences.end();
 
   #elif ARDUINO_SAMD_ZERO
@@ -510,21 +529,21 @@ bool triggerActive() {
 
 void onTelemetryChanged() {
 
-  switch (controlMode) {
+  switch (state) {
 
-  case MODE_NORMAL: //
-  case MODE_IDLE:
-    if (telemetry.getSpeed() != 0 || throttle != default_throttle)  {
-      // moving
-      stopped = false;
-    } else {
-      if (!stopped) { // just stopped
-        stopTime = millis();
-        stopped = true;
-        debug("stopped");
+    case NORMAL: //
+    case IDLE:
+      if (telemetry.getSpeed() != 0 || throttle != default_throttle)  {
+        // moving
+        stopped = false;
+      } else {
+        if (!stopped) { // just stopped
+          stopTime = millis();
+          stopped = true;
+          debug("stopped");
+        }
       }
-    }
-    break;
+      break;
   }
 
 }
@@ -605,7 +624,7 @@ bool receiveData() {
   }
 
   // monitor board state:
-  receiverState = static_cast<BoardState>(recvPacket.state);
+  receiverState = static_cast<AppState>(recvPacket.state);
 
   // response type
   switch (recvPacket.type) {
@@ -630,9 +649,23 @@ bool receiveData() {
       memcpy(&boardConfig, buf, PACKET_SIZE);
 
       // check chain and CRC
-      debug("ConfigPacket: max speed " + String(boardConfig.maxSpeed ));
+      debug("ConfigPacket: max speed " + String(boardConfig.maxSpeed));
 
       needConfig = false;
+      return true;
+
+    case BOARD_ID:
+      memcpy(&boardInfo, buf, PACKET_SIZE);
+
+      // check chain and CRC
+      debug("InfoPacket: board ID " + String(boardInfo.id));
+
+      // add to list
+      settings.boardID = boardInfo.id;
+      saveSettings();
+
+      // pairing done
+      state = NORMAL;
       return true;
   }
 
@@ -703,35 +736,47 @@ bool responseAvailable(uint8_t len) {
 
 void prepatePacket() {
 
-  if (needConfig) {
-    // Ask for board configuration
-    remPacket.command = GET_CONFIG;
-  } else {
-    // speed control
-    switch (controlMode) {
-    case MODE_CRUISE: // Set cruise mode
-      remPacket.command = SET_CRUISE;
-      remPacket.data = round(cruiseSpeed);
+  // speed control
+  switch (state) {
+
+  case CRUISE: // Set cruise mode
+    remPacket.command = SET_CRUISE;
+    remPacket.data = round(cruiseSpeed);
+    break;
+
+  case CONNECTING:
+    if (needConfig) {
+      // Ask for board configuration
+      remPacket.command = GET_CONFIG;
+      debug("send GET_CONFIG");
       break;
-    case MODE_IDLE:
-    case MODE_NORMAL: // Send throttle to the receiver.
+    } // else falltrough
+
+  case IDLE:
+  case NORMAL: // Send throttle to the receiver.
+    remPacket.command = SET_THROTTLE;
+    remPacket.data = round(throttle);
+    break;
+
+  case MENU:
+    if (requestUpdate) {
+      debug("requestUpdate");
+      remPacket.command = SET_STATE;
+      remPacket.data = UPDATE;
+      requestUpdate = false;
+    } else {
       remPacket.command = SET_THROTTLE;
-      remPacket.data = round(throttle);
-      break;
-    case MODE_MENU:
-      if (requestUpdate) {
-        debug("requestUpdate");
-        remPacket.command = SET_STATE;
-        remPacket.data = UPDATE;
-        requestUpdate = false;
-      } else {
-        remPacket.command = SET_THROTTLE;
-        remPacket.data = default_throttle;
-      }
-      break;
+      remPacket.data = default_throttle;
     }
+    break;
+  case PAIRING:
+    debug("send PAIRING");
+    remPacket.command = SET_STATE;
+    remPacket.data = PAIRING;
+    break;
   }
-  remPacket.address = boardAddress; // todo: cycle
+
+  remPacket.address = settings.boardID; // todo: cycle
   remPacket.counter = counter++;
 }
 /*
@@ -751,27 +796,36 @@ void transmitToReceiver() {
       digitalWrite(LED, LOW);
 
       // Transmission was a success (2 seconds after remote startup)
-      if (!connected && secondsSince(startupTime) > 2 ) vibrate(200);
-
-      connected = true;
+      switch (state) {
+        case CONNECTING:
+          state = IDLE; // now connected
+          if (secondsSince(startupTime) > 2) vibrate(100);
+          break;
+      }
       failCount = 0;
     } else {
-      debug("No reply");
+      // debug("No reply");
       failCount++;
     }
 
-  } else {
-    // Transmission was not a succes
+  } else { // Transmission was not a succes
+
     failCount++;
     debug("Failed transmission");
   }
 
-  // If lost more than 5 transmissions, we can assume that connection is lost.
-  if (failCount > 5) {
-    if (connected) vibrate(200);
-    connected = false;
-    // debug("Disconnected");
+  // If lost more than 10 transmissions, we can assume that connection is lost.
+  if (failCount > 10) {
+    switch (state) {
+      case PAIRING: break; // keep pairing mode
+      case CONNECTING: break;
+      default: // connected
+        debug("Disconnected");
+        state = CONNECTING;
+        vibrate(100);
+    }
   }
+
 }
 
 /*
@@ -933,26 +987,31 @@ void updateMainDisplay()
 
   if (isShuttingDown()) drawShutdownScreen();
 
-  else if (connected) { // main UI
+  else switch (state) {
 
-     // 10 ms
-
-
-    switch (page) {
-    case PAGE_MAIN:
-      drawBatteryLevel(); // 2 ms
-      drawMode();
-      drawSignal(); // 1 ms
-      drawMainPage();
+    case CONNECTING:
+      drawConnectingScreen();
+      drawThrottle();
       break;
-    case PAGE_EXT:  drawExtPage(); break;
-    case PAGE_MENU: drawSettingsMenu(); break;
-    case PAGE_DEBUG: drawDebugPage(); break;
-    }
 
-  } else { // connecting
-    drawConnectingScreen();
-    drawThrottle();
+    case PAIRING:
+      drawPairingScreen();
+      drawThrottle();
+      break;
+
+    default: // connected
+
+      switch (page) {
+        case PAGE_MAIN:
+          drawBatteryLevel(); // 2 ms
+          drawMode();
+          drawSignal(); // 1 ms
+          drawMainPage();
+          break;
+        case PAGE_EXT:  drawExtPage(); break;
+        case PAGE_MENU: drawSettingsMenu(); break;
+        case PAGE_DEBUG: drawDebugPage(); break;
+      }
   }
 
   display.display();
@@ -968,6 +1027,37 @@ void drawShutdownScreen()
   drawHLine(32 - w, 70, w * 2); // top line
 }
 
+void drawPairingScreen() {
+
+  display.setRotation(DISPLAY_ROTATION);
+
+  // blinking icon
+  if (millisSince(lastSignalBlink) > 500) {
+    signalBlink = !signalBlink;
+    lastSignalBlink = millis();
+  }
+
+  int y = 17; int x = (display.width()-12)/2;
+
+  if (signalBlink) {
+    display.drawXBitmap(x, y, connectedIcon, 12, 12, WHITE);
+  } else {
+    display.drawXBitmap(x, y, noconnectionIcon, 12, 12, WHITE);
+  }
+
+  y += 38;
+  drawString("Firefly Nano", -1, y, fontMicro);
+  drawString(String(RF_FREQ, 0) + " Mhz", -1, y + 12, fontMicro);
+
+  y += 12 + 12*2;
+  drawString("Pairing...", -1, y, fontMicro);
+
+  // hall + throttle
+  y += 14;
+  drawString((triggerActive() ? "T " : "0 ") + String(hallValue) + " " + String(throttle, 0), -1, y, fontMicro);
+
+}
+
 void drawConnectingScreen() {
 
   display.setRotation(DISPLAY_ROTATION);
@@ -977,7 +1067,7 @@ void drawConnectingScreen() {
   display.drawXBitmap((64-24)/2, y, logo, 24, 24, WHITE);
 
   y += 38;
-  drawString("FireFly Nano", -1, y, fontMicro);
+  drawString("Firefly Nano", -1, y, fontMicro);
   drawString(String(RF_FREQ, 0) + " Mhz", -1, y + 12, fontMicro);
 
   // blinking icon
@@ -1113,13 +1203,18 @@ void calibrateScreen() {
 
 }
 
+void backToMainMenu() {
+  menuPage = MENU_MAIN;
+  currentMenu = 0;
+}
+
 void drawSettingsMenu() {
 
   //  display.drawFrame(0,0,64,128);
   int y = 10;
 
   // check speed
-  if (controlMode != MODE_MENU) {
+  if (state != MENU) {
 
     if (telemetry.getSpeed() != 0) {
       drawString("Stop", -1, y=50, fontDesc);
@@ -1127,7 +1222,7 @@ void drawSettingsMenu() {
       drawString("menu", -1, y+=14, fontDesc);
       return;
     } else { // enable menu
-      controlMode = MODE_MENU;
+      state = MENU;
     }
   }
 
@@ -1180,9 +1275,25 @@ void drawSettingsMenu() {
       subMenuItem = round(currentMenu);
       waitRelease(PIN_TRIGGER);
 
-
+      // handle commands
+      switch (subMenu) {
+        case MENU_INFO: break;
+        case MENU_REMOTE:
+          switch (subMenuItem) {
+            case REMOTE_PAIR:
+              state = PAIRING;
+              backToMainMenu(); // exit menu
+              break;
+          }
+        case MENU_BOARD:
+          switch (subMenuItem) {
+            case BOARD_UPDATE:
+              requestUpdate = true;
+              backToMainMenu();
+              break;
+          }
+      }
     }
-
     break;
 
   case MENU_ITEM:
@@ -1203,9 +1314,6 @@ void drawSettingsMenu() {
     case MENU_BOARD:
       switch (subMenuItem) {
       case BOARD_UPDATE:
-        requestUpdate = true;
-        menuPage = MENU_MAIN; // go back
-        currentMenu = 0;
         break;
       }
 
@@ -1224,14 +1332,13 @@ void drawDebugPage() {
   //  display.drawFrame(0,0,64,128);
 
   int y = 10;
-  drawString("Debug", -1, y, fontDesc);
+  drawString(String(settings.boardID, HEX), -1, y, fontDesc);
 
   y = 35;
-  if (connected) drawStringCenter(String(lastDelay), " ms", y);
-  else drawStringCenter("", "No reply", y);
+  drawStringCenter(String(lastDelay), " ms", y);
 
   y += 25;
-  if (connected) drawStringCenter(String(lastRssi, 0), " db", y);
+  drawStringCenter(String(lastRssi, 0), " db", y);
 
   y += 25;
   drawStringCenter(String(readThrottlePosition()), String(hallValue), y);
@@ -1267,25 +1374,21 @@ void drawMode() {
 
   String m = "?";
 
-  switch (controlMode) {
+  switch (state) {
 
-  case MODE_IDLE:
+  case IDLE:
     m = "!";
     break;
 
-  case MODE_NORMAL:
+  case NORMAL:
     m = "N";
     break;
 
-  case MODE_STOP:
-    m = "S";
-    break;
-
-  case MODE_ENDLESS:
+  case ENDLESS:
     m = "E";
     break;
 
-  case MODE_CRUISE:
+  case CRUISE:
     m = "C";
     break;
   }
@@ -1346,6 +1449,10 @@ void drawExtPage() {
   bars = map(telemetry.getInputCurrent(), BATTERY_MIN, BATTERY_MAX, -10, 10);
   drawBars(x, y, bars, "B", String(telemetry.getInputCurrent(), 0) );
 
+  // FET & motor temperature
+  drawString(String(telemetry.tempFET) + " C    "
+    + String(telemetry.tempMotor) + " C", -1, 114, fontPico);
+
 }
 
 /*
@@ -1393,7 +1500,8 @@ void drawMainPage() {
       case STOPPING: m = "Stopping"; break;
       case STOPPED: m = "Stopped"; break;
       case PUSHING: m = "Pushing"; break;
-      case AUTO_CRUISE: m = "Cruise"; break;
+      case COASTING: m = "Coasting"; break;
+      case ENDLESS: m = "Cruise"; break;
       case UPDATE: m = "Update"; break;
       default: m = "?";
     }

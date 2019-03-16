@@ -290,6 +290,11 @@ void Adafruit_SSD1306::begin(uint8_t vccstate, uint8_t i2caddr) {
 
 
 void Adafruit_SSD1306::powerOff() {
+
+  // to test, should save more energy
+  // display.sendCommand(0x8D); //into charger pump set mode
+  // display.sendCommand(0x10); //turn off charger pump
+
   ssd1306_command(SSD1306_DISPLAYOFF);
 }
 

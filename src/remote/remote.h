@@ -35,6 +35,8 @@
   const int CENTER_HALL = 755;
   const int MAX_HALL = 1023;
 
+  static intr_handle_t s_rtc_isr_handle;
+
 #endif
 
 struct RemoteSettings {
@@ -42,6 +44,7 @@ struct RemoteSettings {
   short minHallValue = MIN_HALL;
   short centerHallValue = CENTER_HALL;
   short maxHallValue = MAX_HALL;
+  uint32_t boardID = 0;
 } settings;
 
 RemoteSettings tempSettings;
@@ -59,6 +62,7 @@ ReceiverPacket recvPacket;
 RemotePacket remPacket;
 TelemetryPacket telemetry;
 ConfigPacket boardConfig;
+InfoPacket boardInfo;
 
 bool needConfig = true; // query board confirmation on start
 
@@ -78,18 +82,8 @@ enum ui_page {
   PAGE_EXT,   // current / settings
   PAGE_MENU,
   PAGE_MAX,
-  PAGE_DEBUG,
+  PAGE_DEBUG
 } page = PAGE_MAIN;
-
-// speed control
-enum control_mode {
-  MODE_IDLE,
-  MODE_NORMAL,
-  MODE_CRUISE,
-  MODE_ENDLESS,
-  MODE_STOP,
-  MODE_MENU
-} controlMode = MODE_IDLE;
 
 // Battery monitoring
 const float minVoltage = 3.3; // min voltage with vibro motor
@@ -105,7 +99,8 @@ float throttle;
 const uint8_t hallNoiseMargin = 8;
 byte hallCenterMargin = 0;
 
-BoardState receiverState;
+AppState state = CONNECTING;
+AppState receiverState;
 
 // OLED display
 unsigned long lastSignalBlink;
@@ -121,7 +116,6 @@ bool stopped = true;
 
 // Defining variables for radio communication
 unsigned long lastTransmission;
-bool connected = false;
 short failCount;
 
 unsigned long lastMarker;
@@ -131,7 +125,6 @@ unsigned long lastDelay;
 bool power = true;
 uint8_t shutdownReq = 0;
 int batteryLevel = 0; // remote battery
-static intr_handle_t s_rtc_isr_handle;
 
 // cruise control
 float cruiseSpeed = 0;
@@ -150,7 +143,6 @@ enum menu_page {
 
 const byte subMenus = 7;
 const byte mainMenus = 3;
-
 
 String MENUS[mainMenus][subMenus] = {
     { "Info", "Debug", "", "", "", "", "" },
@@ -254,6 +246,7 @@ void drawMainPage();
 void drawExtPage();
 void drawSettingsMenu();
 void drawShutdownScreen();
+void drawPairingScreen();
 void drawDebugPage();
 void drawSignal();
 void drawStringCenter(String value, String caption, uint8_t y);
@@ -269,6 +262,7 @@ bool isShuttingDown();
 void loadSettings();
 void loop();
 bool pressed(int button);
+void backToMainMenu();
 int readThrottlePosition();
 bool receiveData();
 bool receivePacket(uint8_t* buf, uint8_t len);

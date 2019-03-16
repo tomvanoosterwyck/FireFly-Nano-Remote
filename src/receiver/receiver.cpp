@@ -27,6 +27,8 @@
 
 Smoothed <double> batterySensor;
 
+Smoothed <double> motorCurrent;
+
 #include "radio.h"
 
 float signalStrength;
@@ -62,6 +64,10 @@ void setup()
 
   // 10 seconds average
   batterySensor.begin(SMOOTHED_EXPONENTIAL, 10);
+
+  // 1 sec average
+  motorCurrent.begin(SMOOTHED_AVERAGE, 2);
+  motorCurrent.add(0);
 
   UART.setTimeout(UART_TIMEOUT);
 
@@ -101,14 +107,27 @@ void setup()
   #endif
 }
 
+bool isTelemetryLost() {
+  return telemetryTime !=0 // telemetry was active
+    && secondsSince(telemetryTime) > 1; // not received recently
+}
+
+// safety check
+bool isMoving() {
+
+  if (isTelemetryLost()) return true; // assume movement for safety
+
+  return telemetry.getSpeed() != 0; // moving in any direction
+}
+
 bool prepareUpdate() {
 
   // safety checks
-  if (telemetry.getSpeed() != 0) return false;
+  if (isMoving()) return false;
 
   state = UPDATE;
 
-  // replace this with
+  // replace this with your WiFi network credentials
   const char* ssid = WIFI_NETWORK; // e.g. "FBI Surveillance Van #34";
   const char* password = WIFI_PASSWORD; // e.g. "12345678";
 
@@ -200,9 +219,8 @@ String getState() {
     case CONNECTED: return "Normal";  // dB?
     case STOPPING: return "Stopping";
     case STOPPED: return "Stopped";
-    case ENDLESS: return "Auto";
-    case AUTO_WALK: return "Cruise 5";
-    case AUTO_CRUISE: return "Cruise 15";
+    case PUSHING: return "Pushing";
+    case ENDLESS: return "Cruise";
     case UPDATE: return "Update";
   }
 }
@@ -218,18 +236,16 @@ void updateScreen() {
       drawBattery();
       break;
 
-    case AUTO_WALK:
-    case AUTO_CRUISE:
+    case ENDLESS:
       display.setTextColor(WHITE);
       display.setFont(fontDigital);
 
       display.setCursor(0, 20);
-      display.println("CRUISE: 5");
+      display.println("CUR: " + String(telemetry.getMotorCurrent(), 1) + " A");
       display.println("SPD: " + String(telemetry.getSpeed(),1));
       break;
 
     case UPDATE:
-      debug("draw update screen");
       display.setTextColor(WHITE);
       display.setFont(fontDesc);
 
@@ -240,7 +256,7 @@ void updateScreen() {
       break;
 
     default:
-      if (throttle == default_throttle && telemetry.getSpeed() == 0) {
+      if (throttle == default_throttle && !isMoving()) {
         drawBattery();
       } else { // riding
         display.setTextColor(WHITE);
@@ -256,11 +272,15 @@ void updateScreen() {
   // ---- status ----
   display.setTextColor(WHITE);
 
-  drawStringCentered(
-    getState() + "  " +
+  String s = getState() + "  " +
     String(telemetry.getVoltage(), 1) + "v  " +
-    String(telemetry.getDistance(), 1) + "km",
-    64, 62, fontDesc);
+    String(telemetry.getDistance(), 1) + "km";
+
+  #ifdef FAKE_UART
+    s = "Board ID: " + String(boardID, HEX);
+  #endif
+
+  drawStringCentered(s, 64, 62, fontDesc);
 
   display.display();
 }
@@ -340,96 +360,10 @@ void drawBattery() {
 }
 #endif // RECEIVER_SCREEN
 
-#ifdef BLUETOOTH
-  class MyServerCallbacks: public BLEServerCallbacks {
-      void onConnect(BLEServer* pServer) {
-        deviceConnected = true;
-        Serial.println("*** connected ******");
-
-      };
-
-      void onDisconnect(BLEServer* pServer) {
-        deviceConnected = false;
-      }
-  };
-
-  // receive BLE data
-  class MyCallbacks: public BLECharacteristicCallbacks {
-      void onWrite(BLECharacteristic *pCharacteristic) {
-
-        std::string rxValue = pCharacteristic->getValue();
-
-        uint8_t messageReceived[256];
-        int count = 0;
-
-        if (rxValue.length() > 0) {
-          // Serial.println("*********");
-          // Serial.print("Received Value: ");
-          for (int i = 0; i < rxValue.length(); i++) {
-            // line1 += String(rxValue[i], HEX) + " ";
-            messageReceived[i] = rxValue[i];
-            count++;
-          }
-          // Serial.print(line1);
-
-          // Forward package to UART
-          // stop byte?
-          // count++;
-          // messageReceived[count] = '\0';
-
-        	MySerial.write(messageReceived, count);
-        }
-      }
-  };
-
-  void stopBLE() {
-
-    // Stop advertising
-    pServer->getAdvertising()->stop();
-
-    // Start the service
-    pService->stop();
-
-
-  }
-
-  void startBLE() {
-
-    // Create the BLE Device
-    BLEDevice::init("FireFly Nano Receiver");
-
-    // Create the BLE Server
-    pServer = BLEDevice::createServer();
-    pServer->setCallbacks(new MyServerCallbacks());
-
-    // Create the BLE Service
-    pService = pServer->createService(SERVICE_UUID);
-
-    // Create a BLE Characteristic
-    pTxCharacteristic = pService->createCharacteristic(
-  				  CHARACTERISTIC_UUID_TX, BLECharacteristic::PROPERTY_NOTIFY);
-
-    pTxCharacteristic->addDescriptor(new BLE2902());
-
-    BLECharacteristic * pRxCharacteristic = pService->createCharacteristic(
-  					CHARACTERISTIC_UUID_RX, BLECharacteristic::PROPERTY_WRITE);
-
-    pRxCharacteristic->setCallbacks(new MyCallbacks());
-
-    // Start the service
-    pService->start();
-
-    // Start advertising
-    pServer->getAdvertising()->start();
-    debug("Waiting a client connection to notify...");
-
-  }
-#endif
-
 void loop() // core 1
 {
-  // get telemetry");
-  if (!deviceConnected) getUartData(); // every 250  ms
+  // get telemetry;
+  getUartData(); // every 250  ms
 
   #ifdef ARDUINO_SAMD_ZERO
     radioExchange();
@@ -481,8 +415,20 @@ void loop() // core 1
   }
 #endif
 
+void pairingRequest() {
+
+  // safety checks
+
+  #ifdef FAKE_UART
+    setState(PAIRING);
+    return;
+  #endif
+
+  // todo: confirm pairing
+
+}
+
 bool receiveData() {
-  // debug("receiveData");
 
   uint8_t len = sizeof(RemotePacket) + CRC_SIZE; // 9
   uint8_t buf[len];
@@ -524,11 +470,20 @@ bool receiveData() {
   memcpy(&remPacket, buf, sizeof(remPacket));
 
   // address check
-  if (remPacket.address != boardID) {
-    Serial.print("Wrong Board ID, please use: 0x");
-    Serial.println(String(boardID, HEX));
-    return false;
-  }
+  #ifdef FAKE_UART
+    // accept any address
+  #else
+    if (remPacket.address != boardID) {
+      // pairing request?
+      if (!isMoving() && remPacket.command == SET_STATE && remPacket.data == PAIRING) {
+        // accept any address
+      } else {
+        Serial.print("Wrong Board ID, please use: 0x");
+        Serial.println(String(boardID, HEX));
+        return false;
+      }
+    }
+  #endif
 
   if (remPacket.version != VERSION) {
     Serial.print("Version mismatch!");
@@ -578,14 +533,12 @@ bool sendData(uint8_t response) {
   switch (response) {
 
   case ACK_ONLY: // no extra data to send
-    debug("Sending ack only");
     telemetry.header.type = response;
     telemetry.header.chain = remPacket.counter;
     telemetry.header.state = state;
     return sendPacket(&telemetry, sizeof(telemetry));
 
   case TELEMETRY:
-    debug("Sending telemetry");
     telemetry.header.type = response;
     telemetry.header.chain = remPacket.counter;
     telemetry.header.state = state;
@@ -603,6 +556,17 @@ bool sendData(uint8_t response) {
 
     if (sendPacket(&boardConfig, sizeof(boardConfig))) {
       justStarted = false; // send config once
+      return true;
+    }
+    break;
+
+  case BOARD_ID:
+    debug("Sending board ID");
+    boardInfo.header.type = response;
+    boardInfo.header.chain = remPacket.counter;
+    boardInfo.id = boardID;
+
+    if (sendPacket(&boardInfo, sizeof(boardInfo))) {
       return true;
     }
     break;
@@ -625,10 +589,9 @@ bool dataAvailable() {
   #endif
 }
 
-void setState(BoardState newState) {
-  state = newState;
+void setState(AppState newState) {
 
-  switch (state) {
+  switch (newState) {
 
     case IDLE: break;
 
@@ -636,20 +599,39 @@ void setState(BoardState newState) {
       timeSpeedReached = millis();
       break;
 
-    case AUTO_CRUISE:
+    case ENDLESS:
+      if (isTelemetryLost()) return;
       cruiseControlStart = millis();
       break;
 
-    case CONNECTED: break;
+    case CONNECTED:
+      switch (state) {
+        case UPDATE: return;
+
+        case PUSHING: // monitor data
+        case STOPPING:
+        case ENDLESS:
+        case COASTING:
+          if (remPacket.data == default_throttle) return;
+          break;
+      }
+      // prevent auto-stop
+      timeoutTimer = millis();
+      connected = true;
+      break;
 
     case STOPPING:
     case STOPPED:
+      debug("disconnected");
       lastBrakeTime = millis();
       break;
 
     case UPDATE: break;
-
+    case PAIRING: break;
   }
+
+  // apply state
+  state = newState;
 }
 
 void radioExchange() {
@@ -664,42 +646,33 @@ void radioExchange() {
 
     if (receiveData()) {
 
-      timeoutTimer = millis();
       receivedData = true;
-      connected = true;
 
-      debug( "New package: command " + String(remPacket.command) + ", data " + String(remPacket.data) + ", counter " + String(remPacket.counter) );
+      // debug( "New package: command " + String(remPacket.command) + ", data " + String(remPacket.data) + ", counter " + String(remPacket.counter) );
 
       // Send acknowledgement
       uint8_t response = ACK_ONLY;
 
       switch (remPacket.command) {
         case SET_THROTTLE:
-          switch (state) {
-            case UPDATE: break; //
-            case PUSHING:
-            case STOPPING:
-            case AUTO_CRUISE: // monitor data
-              if (remPacket.data < default_throttle) {
-                setState(CONNECTED);
-              }
-              break;
-
-            default:
-              setState(CONNECTED);
-          }
-          // falltrough
         case SET_CRUISE:
+          setState(CONNECTED); // keep connection
           if (telemetryUpdated) { response = TELEMETRY; }
-
           break;
+
         case SET_STATE:
           switch (remPacket.data) {
             case UPDATE:
               prepareUpdate();
               break;
+            case PAIRING:
+              pairingRequest();
+              // request confirmed?
+              if (state == PAIRING) response = BOARD_ID;
+              break;
           }
           break;
+
         case GET_CONFIG: response = CONFIG; break;
 
       }
@@ -744,51 +717,61 @@ void autoCruise(uint8_t speed) {
 
     setCruise(speed);
   }
-
-
 }
 
-
-void stateMachine() {
+void stateMachine() { // handle auto-stop, endless mode, etc...
 
   switch (state) {
 
     case IDLE: // no remote connected
 
-      debug("IDLE");
-      if (telemetry.getSpeed() >= 5) {
-        state = AUTO_WALK;
+      setThrottle(default_throttle);
+      if (telemetry.getSpeed() >= PUSHING_SPEED) setState(PUSHING);
+      break;
+
+    case PUSHING: // pushing with no remote connected
+
+      if (telemetry.getSpeed() < PUSHING_SPEED) { // pushing ended
+        if (AUTO_CRUISE_ON) {
+          if (secondsSince(timeSpeedReached) > PUSHING_TIME)
+            setState(ENDLESS); // start cruise control
+          else
+            setState(IDLE); // not enough pushing
+        }
+      } else if (telemetry.getSpeed() > MAX_PUSHING_SPEED) { // downhill
+        setState(STOPPING);
       }
       break;
 
-    case AUTO_WALK: // cruise without remote at 5 km/h
+    case ENDLESS: // cruise without remote at ~12 km/h / 7 mph
 
-      autoCruise(5);
+      autoCruise(PUSHING_SPEED);
 
-      if (telemetry.getSpeed() >= 15) { // NFS
-        state = AUTO_CRUISE;
-        debug("NFS");
-      } else if (telemetry.getSpeed() < 3) { // rider want to stop
-        state = IDLE;
-        debug("< 3 mh/h");
+      // detect a foot brake /
+      if (true) {
+        double current = telemetry.getMotorCurrent(); // ~2 amps
+        double smoothed = motorCurrent.get();
+
+        // sudden change (> 5 A) after 2 seconds
+        if (abs(current - smoothed) > CRUISE_CURRENT_SPIKE && secondsSince(cruiseControlStart) > 2) {
+          setState(IDLE);
+        }
+
+        // switch to coasting after some time
+        if (secondsSince(cruiseControlStart) > AUTO_CRUISE_TIME) {
+          // keep cruise control downhill/uphill
+          if (abs(current) <= CRUISE_CURRENT_LOW) setState(COASTING);
+        }
+
+        motorCurrent.add(current);
       }
-
-      // check amps/speed !
-
       break;
 
-    case AUTO_CRUISE: // cruise without remote at 15 km/h
+    case COASTING: // waiting for board to slowdown
 
-      debug("AUTO_CRUISE");
-
-      autoCruise(15);
-
-      if (telemetry.getSpeed() < 10) { // rider want to stop
-        state = IDLE;
-      }
-
-      // check amps/speed !
-
+      setThrottle(default_throttle);
+      // avoid ENDLESS > IDLE > PUSHING loop
+      if (telemetry.getSpeed() < PUSHING_SPEED) setState(IDLE);
       break;
 
     case CONNECTED: // remote is connected
@@ -798,26 +781,21 @@ void stateMachine() {
         debug("receiver timeout");
 
         // No speed is received within the timeout limit.
-        // setStatus(TIMEOUT);
         connected = false;
-        state = STOPPING;
-        lastBrakeTime = millis();
+        timeoutTimer = millis();
+
+        setState(STOPPING);
 
         // use last throttle
         throttle = lastThrottle;
-
-        timeoutTimer = millis();
-
-        // falltrough
-
-      } else break;
+      }
+      break;
 
     case STOPPING: // emergency brake when remote has disconnected
 
-      // stop acceleration
+      // start braking from zero throttle
       if (throttle > default_throttle) {
         throttle = default_throttle;
-        // wait?
       }
 
       if (secondsSince(lastBrakeTime) > AUTO_BRAKE_INTERVAL) {
@@ -829,23 +807,19 @@ void stateMachine() {
         if (throttle > brakeForce) throttle -= brakeForce; else throttle = 0;
         setThrottle(throttle);
 
-        debug("braking...");
-        debug(String(throttle,2));
-
         lastBrakeTime = millis();
       }
 
       // check speed
-      if (throttle == 0 && telemetry.getSpeed() == 0) {
-        state = STOPPED;
-        lastBrakeTime = millis();
+      if (throttle == 0 && !isMoving()) {
+        setState(STOPPED);
       }
 
       break;
 
     case STOPPED:
 
-      // release breaks after a few seconds
+      // release brakes after a few seconds
       if (secondsSince(lastBrakeTime) > AUTO_BRAKE_RELEASE) setState(IDLE);
       break;
 
@@ -931,6 +905,7 @@ void setCruise ( bool cruise, uint16_t setPoint ){
 
 void setThrottle(uint16_t value)
 {
+    // update display
     throttle = value;
 
     // UART
@@ -1005,7 +980,12 @@ void calculateRatios() {
 
 // rpm to km/h
 float rpm2speed(long rpm) {
-  return ratioRpmSpeed * rpm;
+  return abs(ratioRpmSpeed * rpm);
+}
+
+// rpm to km/h
+long speed2rpm(uint8_t speed) {
+  return speed / ratioRpmSpeed;
 }
 
 // tachometerAbs to km
@@ -1027,6 +1007,9 @@ void getUartData()
       telemetry.setSpeed(0);
       telemetry.setMotorCurrent(-21);
       telemetry.setInputCurrent(12);
+      telemetry.tempFET = 37;
+      telemetry.tempMotor = 60;
+
       telemetryUpdated = true;
       delay(7);
       return;
@@ -1052,11 +1035,18 @@ void getUartData()
       telemetry.setDistance(tach2dist(UART.data.tachometerAbs));
       telemetry.setMotorCurrent(UART.data.avgMotorCurrent);
       telemetry.setInputCurrent(UART.data.avgInputCurrent);
+
+      // temperature
       telemetry.tempFET = round(UART.data.tempFET);
       telemetry.tempMotor = round(UART.data.tempMotor);
+      if (telemetry.tempMotor > 160) telemetry.tempMotor = 0; // no sensor
+
+      // safety check
+      if (telemetry.getSpeed() > 100) return;
 
       lastDelay = millis() - lastUartPull;
       telemetryUpdated = true;
+      telemetryTime = millis();
 
     } else {
       // returnData.ampHours       = 0.0;
