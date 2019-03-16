@@ -111,10 +111,6 @@ void setup() {
   // 10 seconds average
   batterySensor.begin(SMOOTHED_AVERAGE, 10);
 
-  display.begin(SSD1306_SWITCHCAPVCC, 0x3C);
-  display.setRotation(DISPLAY_ROTATION);
-  display.powerOn();
-
   #ifdef ESP32
     xTaskCreatePinnedToCore(
       coreTask,   /* Function to implement the task */
@@ -127,7 +123,6 @@ void setup() {
   #endif
 
   debug("** Esk8-remote transmitter **");
-
 }
 
 #ifdef ESP32 // core 0
@@ -149,7 +144,7 @@ void loop() { // core 1
   handleButtons();
 
   // Call function to update display
-  updateMainDisplay();
+  if (displayOn) updateMainDisplay();
 }
 
 void radioLoop() {
@@ -167,6 +162,21 @@ void checkBatteryLevel() {
 
   batteryLevel = getBatteryLevel();
 
+  if (batteryLevel > 10) {
+    if (!displayOn) {
+      displayOn = true;
+      // turn on
+      display.begin(SSD1306_SWITCHCAPVCC, 0x3C);
+      display.setRotation(DISPLAY_ROTATION);
+      display.powerOn();
+    }
+  } else { // battery low
+    if (displayOn) {
+      displayOn = false;
+      // turn off to save power
+      display.powerOff();
+    }
+  }
 }
 
 void keepAlive() {
@@ -177,15 +187,19 @@ void calculateThrottle()
 {
   int position = readThrottlePosition();
 
-  switch (controlMode) {
+  switch (state) {
 
-  case MODE_IDLE: //
+  case CONNECTING:
+    throttle = position; // show debug info
+    break;
+
+  case IDLE: //
     if (position < default_throttle) { // breaking
       throttle = position; // brakes always enabled
     } else { // throttle >= 0
       if (triggerActive()) {
         // dead man switch activated
-        controlMode = MODE_NORMAL;
+        state = NORMAL;
         throttle = position;
         debug("dead man switch activated");
       } else {
@@ -197,28 +211,28 @@ void calculateThrottle()
     if (stopped && secondsSince(lastInteraction) > REMOTE_SLEEP_TIMEOUT) sleep();
     break;
 
-  case MODE_NORMAL:
+  case NORMAL:
     throttle = position;
-    debug("MODE_NORMAL");
+    debug("NORMAL");
 
     // activate cruise mode?
     if (triggerActive() && throttle == default_throttle && speed() > 3) {
       cruiseSpeed = speed();
       // cruiseThrottle = throttle;
-      controlMode = MODE_CRUISE;
+      state = CRUISE;
     }
 
     // activate deadman switch
     if (stopped && throttle == default_throttle) { // idle
       if (secondsSince(stopTime) > REMOTE_LOCK_TIMEOUT) {
         // lock remote
-        controlMode = MODE_IDLE;
+        state = IDLE;
         debug("locked");
       }
     }
     break;
 
-  case MODE_MENU: // navigate menu
+  case MENU: // navigate menu
     // idle
     throttle = default_throttle;
 
@@ -227,12 +241,12 @@ void calculateThrottle()
     }
     break;
 
-  case MODE_ENDLESS: break;
+  case ENDLESS: break;
 
-  case MODE_CRUISE:
+  case CRUISE:
     // exit mode if trigger released or throttle changed
     if (!triggerActive() || position != default_throttle) {
-      controlMode = MODE_NORMAL;
+      state = NORMAL;
       throttle = position;
       debug("trigger released");
     }
@@ -1531,16 +1545,16 @@ void drawBatteryLevel() {
       }
   } else signalBlink = false;
 
-  // blink
-  if (signalBlink) return;
-
   drawFrame(x, y, 18, 9);
   drawBox(x + 18, y + 2, 2, 5);
+
+  // blink
+  if (signalBlink) return;
 
   // battery level
   drawBox(x + 2, y + 2, batteryLevel * 14 / 100, 5);
 
-  if (batteryLevel <= 9) { // < 10%
+  if (batteryLevel <= 19) { // < 10%
     drawString(String(batteryLevel), x + 7, y + 6, fontMicro);
   }
 

@@ -111,6 +111,7 @@ BoardState receiverState;
 unsigned long lastSignalBlink;
 bool signalBlink = false;
 byte counter = 0;
+bool displayOn = false;
 
 unsigned long startupTime;
 
