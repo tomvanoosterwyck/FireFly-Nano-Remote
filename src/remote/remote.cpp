@@ -71,7 +71,9 @@ void setup() {
 
   startupTime = millis();
 
-  Serial.begin(115200);
+  #ifdef DEBUG
+    Serial.begin(115200);
+  #endif
 
   // while (!Serial) { ; }
 
@@ -372,15 +374,31 @@ void sleep()
     pinMode(DISPLAY_SCL, INPUT);
     pinMode(DISPLAY_RST,INPUT);
 
+    // rtc_gpio_hold_en((gpio_num_t)RF_MOSI);
+    // rtc_gpio_hold_en((gpio_num_t)RF_RST);
+    // 20k pull-up resistors on Mosi, Miso, SS and CLK
+
+    gpio_num_t gpio_num = (gpio_num_t)RF_RST;
+    rtc_gpio_set_direction(gpio_num, RTC_GPIO_MODE_INPUT_ONLY);
+    rtc_gpio_pulldown_en(gpio_num);
+    rtc_gpio_pullup_dis(gpio_num);
+    rtc_gpio_hold_en(gpio_num);
+    //
+    // gpio_num = (gpio_num_t)RF_MOSI;
+    // rtc_gpio_set_direction(gpio_num, RTC_GPIO_MODE_INPUT_ONLY);
+    // rtc_gpio_pulldown_en(gpio_num);
+    // rtc_gpio_pullup_dis(gpio_num);
+    // rtc_gpio_hold_en(gpio_num);
+
     pinMode(PIN_VIBRO, INPUT); //
 
     pinMode(RF_MISO, INPUT);
     pinMode(RF_DI0, INPUT);
     pinMode(RF_MOSI, INPUT);
 
-    // pinMode(5,INPUT);
-    // pinMode(14,INPUT);
-    // pinMode(18,INPUT);
+    pinMode(RF_SCK, INPUT);
+    pinMode(14,INPUT);
+    pinMode(RF_CS, INPUT);
 
     // disable battery probe
   	pinMode(VEXT, OUTPUT);

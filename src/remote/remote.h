@@ -21,6 +21,7 @@
 
   // brownout
   #include <driver/rtc_cntl.h>
+  #include <driver/rtc_io.h>
   #include <soc/rtc_cntl_reg.h>
 
   #include <esp_sleep.h>
