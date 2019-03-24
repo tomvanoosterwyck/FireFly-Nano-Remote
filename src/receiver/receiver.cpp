@@ -363,44 +363,19 @@ void drawBattery() {
 }
 #endif // RECEIVER_SCREEN
 
-void loop() // core 1
-{
+void loop() { // core 1
+
   // get telemetry;
   getUartData(); // every 250  ms
 
   #ifdef ARDUINO_SAMD_ZERO
     radioExchange();
     stateMachine();
-
   #elif RECEIVER_SCREEN
     if (state == UPDATE) ArduinoOTA.handle();
     updateScreen(); // 25 ms
     vTaskDelay(1);
   #endif
-
-  #ifdef BLUETOOTH
-
-  if (deviceConnected) {
-
-    // get response
-    if (MySerial.available()) {
-
-      uint8_t payload[256];
-      size_t sz = UART.receiveUartMessageRaw(payload);
-
-      // for (int i = 0; i < sz; i++) {
-      //   line3 += String(payload[i], HEX) + " ";
-      // }
-
-      // send response
-      pTxCharacteristic->setValue(payload, sz);
-      pTxCharacteristic->notify();
-    }
-
-    delay(1); // bluetooth stack will go into congestion, if too many packets are sent
-  }
-  #endif
-
 }
 
 #ifdef ESP32

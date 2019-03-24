@@ -8,12 +8,8 @@
 
 #define DEBUG // Uncomment DEBUG if you need to debug the remote
 
-// const COMM_PACKET_ID VESC_COMMAND = COMM_GET_VALUES; // VESC
-const COMM_PACKET_ID VESC_COMMAND = COMM_GET_UNITY_VALUES; // Enertion Unity
-
-// If you know the receiver ID you can specify it here.
-// Otherwise the receiver will pair automatically in FAKE_UART mode.
-const uint32_t boardAddress = 0x00000000;
+const COMM_PACKET_ID VESC_COMMAND = COMM_GET_VALUES; // VESC
+// const COMM_PACKET_ID VESC_COMMAND = COMM_GET_UNITY_VALUES; // Enertion Unity
 
 /*
   Endless ride - when remote is off and speed is over 12 km/h for 3 seconds,
