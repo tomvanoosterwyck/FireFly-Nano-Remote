@@ -1,12 +1,23 @@
 
 #include <Arduino.h>
-#include "CPU.h"
-#include <Adafruit_GFX.h>
 #include <Smoothed.h>
+#include "CPU.h"
 #include "globals.h"
 #include "radio.h"
 #include "utils.h"
 #include "VescUart.h"
+
+#ifdef RECEIVER_SCREEN
+  #include <Adafruit_GFX.h>
+  #include "Adafruit_SSD1306.h"
+  // fonts
+  #include "fonts/Lato_Regular_7.h"
+  #include "fonts/Digital.h"
+  #include "fonts/Pico.h"
+  #include <Fonts/Org_01.h> // Adafruit
+  #include <Fonts/FreeSans9pt7b.h>
+  #include <Fonts/FreeSans12pt7b.h>
+#endif
 
 VescUart UART;
 
@@ -63,16 +74,7 @@ String updateStatus;
 unsigned long lastBrakeTime;
 
 
-
-// fonts
-#include "fonts/Lato_Regular_7.h"
-#include "fonts/Digital.h"
-#include "fonts/Pico.h"
-#include <Fonts/Org_01.h> // Adafruit
-
-#include <Fonts/FreeSans9pt7b.h>
-#include <Fonts/FreeSans12pt7b.h>
-
+#ifdef RECEIVER_SCREEN
 const GFXfont* fontDigital = &Segment13pt7b;  // speed, distance, ...
 // const GFXfont* fontPico = &Segment6pt7b;      //
 const GFXfont* fontDesc = &Dialog_plain_9;    // km/h
@@ -80,6 +82,11 @@ const GFXfont* fontMicro = &Org_01;         // connection screen
 
 const GFXfont* fontBig = &FreeSans12pt7b;         // connection screen
 const GFXfont* font = &FreeSans9pt7b;         // connection screen
+
+void updateScreen();
+void drawBattery();
+#endif
+
 bool prepareUpdate();
 void acquireSetting();
 void calculateRatios();
@@ -106,9 +113,5 @@ String uint64ToAddress(uint64_t number);
 String uint64ToString(uint64_t number);
 void updateEEPROMSettings();
 
-#ifdef RECEIVER_SCREEN
-void updateScreen();
-void drawBattery();
-#endif
 
 void updateSetting(uint8_t setting, uint64_t value);

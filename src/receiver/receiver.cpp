@@ -20,8 +20,6 @@
 #endif
 
 #ifdef RECEIVER_SCREEN
-  #include <Adafruit_GFX.h>
-  #include "Adafruit_SSD1306.h" // local file for TTGO
   Adafruit_SSD1306 display(DISPLAY_RST);
 #endif
 
@@ -102,8 +100,14 @@ void setup()
 
   debug("Setup complete - begin listening");
 
+  #ifdef VEXT // power on display
+    pinMode(VEXT, OUTPUT);
+    digitalWrite(VEXT, LOW);
+  #endif
+
   #ifdef RECEIVER_SCREEN
     display.begin(SSD1306_SWITCHCAPVCC, 0x3C);
+    display.powerOn();
   #endif
 }
 
@@ -120,6 +124,32 @@ bool isMoving() {
   return telemetry.getSpeed() != 0; // moving in any direction
 }
 
+/*
+   Calculate the battery level of the board based on the telemetry voltage
+*/
+float batteryPackPercentage( float voltage ) {
+
+  float maxCellVoltage = 4.2;
+  float minCellVoltage;
+
+  if (boardConfig.batteryType == 0) { // Li-ion
+    minCellVoltage = 3.1;
+  } else { // Li-po
+    minCellVoltage = 3.4;
+  }
+
+  float percentage = (100 - ( (maxCellVoltage - voltage / boardConfig.batteryCells) / ((maxCellVoltage - minCellVoltage)) ) * 100);
+
+  if (percentage > 100.0) {
+    return 100.0;
+  } else if (percentage < 0.0) {
+    return 0.0;
+  }
+
+  return percentage;
+}
+
+#ifdef RECEIVER_SCREEN
 bool prepareUpdate() {
 
   // safety checks
@@ -225,7 +255,6 @@ String getState() {
   }
 }
 
-#ifdef RECEIVER_SCREEN
 void updateScreen() {
 
   display.clearDisplay();
@@ -284,32 +313,6 @@ void updateScreen() {
 
   display.display();
 }
-
-/*
-   Calculate the battery level of the board based on the telemetry voltage
-*/
-float batteryPackPercentage( float voltage ) {
-
-  float maxCellVoltage = 4.2;
-  float minCellVoltage;
-
-  if (boardConfig.batteryType == 0) { // Li-ion
-    minCellVoltage = 3.1;
-  } else { // Li-po
-    minCellVoltage = 3.4;
-  }
-
-  float percentage = (100 - ( (maxCellVoltage - voltage / boardConfig.batteryCells) / ((maxCellVoltage - minCellVoltage)) ) * 100);
-
-  if (percentage > 100.0) {
-    return 100.0;
-  } else if (percentage < 0.0) {
-    return 0.0;
-  }
-
-  return percentage;
-}
-
 
 void drawBattery() {
 
@@ -663,7 +666,9 @@ void radioExchange() {
         case SET_STATE:
           switch (remPacket.data) {
             case UPDATE:
+              #ifdef ESP32
               prepareUpdate();
+              #endif
               break;
             case PAIRING:
               pairingRequest();
