@@ -1597,7 +1597,7 @@ void drawMainPage() {
   }
 
   // max distance
-  int range = 30;
+  int range = boardConfig.maxRange;
   if (value > range) range = value;
 
   drawString(String(range), 52, 118, fontPico);
