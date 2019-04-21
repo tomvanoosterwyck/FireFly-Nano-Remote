@@ -20,7 +20,7 @@
 #endif
 
 #ifdef RECEIVER_SCREEN
-  Adafruit_SSD1306 display(DISPLAY_RST);
+  Adafruit_SSD1306 display(RST_OLED);
 #endif
 
 Smoothed <double> batterySensor;
