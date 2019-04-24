@@ -100,10 +100,8 @@ void setup()
 
   debug("Setup complete - begin listening");
 
-  #ifdef VEXT // power on display
-    pinMode(VEXT, OUTPUT);
-    digitalWrite(VEXT, LOW);
-  #endif
+  pinMode(Vext, OUTPUT);
+  digitalWrite(Vext, LOW);
 
   #ifdef RECEIVER_SCREEN
     display.begin(SSD1306_SWITCHCAPVCC, 0x3C);
