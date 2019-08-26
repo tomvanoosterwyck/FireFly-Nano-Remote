@@ -19,10 +19,6 @@
   HardwareSerial MySerial(1);
 #endif
 
-#ifdef RECEIVER_SCREEN
-  Adafruit_SSD1306 display(RST_OLED);
-#endif
-
 Smoothed <double> batterySensor;
 
 Smoothed <double> motorCurrent;
@@ -100,13 +96,6 @@ void setup()
 
   debug("Setup complete - begin listening");
 
-  pinMode(Vext, OUTPUT);
-  digitalWrite(Vext, LOW);
-
-  #ifdef RECEIVER_SCREEN
-    display.begin(SSD1306_SWITCHCAPVCC, 0x3C);
-    display.powerOn();
-  #endif
 }
 
 bool isTelemetryLost() {
@@ -147,7 +136,6 @@ float batteryPackPercentage( float voltage ) {
   return percentage;
 }
 
-#ifdef RECEIVER_SCREEN
 bool prepareUpdate() {
 
   // safety checks
@@ -156,8 +144,8 @@ bool prepareUpdate() {
   state = UPDATE;
 
   // replace this with your WiFi network credentials
-  const char* ssid = WIFI_NETWORK; // e.g. "FBI Surveillance Van #34";
-  const char* password = WIFI_PASSWORD; // e.g. "12345678";
+  const char* ssid = ""; // e.g. "FBI Surveillance Van #34";
+  const char* password = ""; // e.g. "12345678";
 
   wifiStatus = "Connecting:";
   updateStatus = String(ssid);
@@ -167,15 +155,15 @@ bool prepareUpdate() {
   while (WiFi.waitForConnectResult() != WL_CONNECTED) {
     debug("Connection Failed!");
     delay(3000);
-    // ESP.restart();
+    ESP.restart();
     return false;
   }
 
   // Port defaults to 3232
-  // ArduinoOTA.setPort(3232);
+  ArduinoOTA.setPort(3232);
 
   // Hostname defaults to esp3232-[MAC]
-  // ArduinoOTA.setHostname("myesp32");
+  ArduinoOTA.setHostname("myesp32");
 
   // No authentication by default
   // ArduinoOTA.setPassword("admin");
@@ -218,149 +206,6 @@ bool prepareUpdate() {
   updateStatus = "Waiting...";
 }
 
-int getStringWidth(String s) {
-
-  int16_t x1, y1;
-  uint16_t w1, h1;
-
-  display.getTextBounds(s, 0, 0, &x1, &y1, &w1, &h1);
-  return w1;
-}
-
-void drawString(String string, int x, int y, const GFXfont *font) {
-
-  display.setFont(font);
-
-  display.setCursor(x, y);
-  display.print(string);
-}
-
-void drawStringCentered(String string, int x, int y, const GFXfont *font) {
-  display.setFont(font);
-  x = x - getStringWidth(string) / 2;
-  drawString(string, x, y, font);
-}
-
-String getState() {
-  switch (state) {
-    case IDLE: return "Idle";
-    case CONNECTED: return "Normal";  // dB?
-    case STOPPING: return "Stopping";
-    case STOPPED: return "Stopped";
-    case PUSHING: return "Pushing";
-    case ENDLESS: return "Cruise";
-    case UPDATE: return "Update";
-  }
-}
-
-void updateScreen() {
-
-  display.clearDisplay();
-
-  switch (state) {
-
-    case IDLE:
-      drawBattery();
-      break;
-
-    case ENDLESS:
-      display.setTextColor(WHITE);
-      display.setFont(fontDigital);
-
-      display.setCursor(0, 20);
-      display.println("CUR: " + String(telemetry.getMotorCurrent(), 1) + " A");
-      display.println("SPD: " + String(telemetry.getSpeed(),1));
-      break;
-
-    case UPDATE:
-      display.setTextColor(WHITE);
-      display.setFont(fontDesc);
-
-      display.setCursor(0, 12);
-
-      display.println(wifiStatus);
-      display.println(updateStatus);
-      break;
-
-    default:
-      if (throttle == default_throttle && !isMoving()) {
-        drawBattery();
-      } else { // riding
-        display.setTextColor(WHITE);
-        display.setFont(fontDigital);
-
-        display.setCursor(0, 20);
-        display.println("THR: " + String(map(throttle, 0, 255, -100, 100)) + "%");
-        display.println("SPD: " + String(telemetry.getSpeed(),1) + " k");
-      }
-      break;
-  }
-
-  // ---- status ----
-  display.setTextColor(WHITE);
-
-  String s = getState() + "  " +
-    String(telemetry.getVoltage(), 1) + "v  " +
-    String(telemetry.getDistance(), 1) + "km";
-
-  #ifdef FAKE_UART
-    s = "Board ID: " + String(boardID, HEX);
-  #endif
-
-  drawStringCentered(s, 64, 62, fontDesc);
-
-  display.display();
-}
-
-void drawBattery() {
-
-  display.setTextColor(WHITE);
-
-
-  if (telemetry.getVoltage() == 0) {
-
-    // no uart connection
-    display.setFont();
-    display.setCursor(0, 10);
-    display.print("No UART data");
-
-    // remote info
-    display.setCursor(0, 25);
-    if (!connected)
-      display.print("Remote not connected");
-    else
-      display.print("Signal: " + String(lastRssi, 0) + " dB");
-
-//    display.setCursor(0, 40);
-//    display.print("Delay: " + String(lastDelay));
-
-    return;
-  }
-
-  // --- battery ----
-  int w = 120; int h = 46;
-  display.drawRect(0, 0, w, h, WHITE);
-  display.drawRect(1, 1, w-2, h-2, WHITE);
-
-  display.fillRect(w, 10, 6, h-10-10, WHITE);
-
-  // fill
-  float pc = batteryPackPercentage(telemetry.getVoltage());
-  int x = w * pc / 100-8;
-  display.fillRect(4, 4, x, h-8, WHITE);
-
-  // % value
-  if (pc > 50) { // left side
-    display.setTextColor(BLACK);
-    drawStringCentered(String(pc, 0) + "%", x/2 + 4, 31, fontBig);
-  } else { // right side
-    display.setTextColor(WHITE);
-    drawStringCentered(String(pc, 0) + "%", x + (w - x) / 2, 31, fontBig);
-  }
-
-}
-#endif // RECEIVER_SCREEN
-
 void loop() { // core 1
 
   // get telemetry;
@@ -371,7 +216,6 @@ void loop() { // core 1
     stateMachine();
   #elif RECEIVER_SCREEN
     if (state == UPDATE) ArduinoOTA.handle();
-    updateScreen(); // 25 ms
     vTaskDelay(1);
   #endif
 }
@@ -588,12 +432,12 @@ void setState(AppState newState) {
         case STOPPING:
         case ENDLESS:
         case COASTING:
-          if (remPacket.data == default_throttle) return;
+          //  if (remPacket.data == default_throttle) return;
           break;
       }
       // prevent auto-stop
-      timeoutTimer = millis();
-      connected = true;
+      //timeoutTimer = millis();
+      //connected = true;
       break;
 
     case STOPPING:
@@ -632,7 +476,12 @@ void radioExchange() {
       switch (remPacket.command) {
         case SET_THROTTLE:
         case SET_CRUISE:
-          setState(CONNECTED); // keep connection
+          if(state != PUSHING && state != COASTING && state != ENDLESS && state != STOPPING){
+            setState(CONNECTED);
+          }
+           // keep connection
+          connected = true;
+          keepConnection();
           if (telemetryUpdated) { response = TELEMETRY; }
           break;
 
@@ -647,6 +496,20 @@ void radioExchange() {
               pairingRequest();
               // request confirmed?
               if (state == PAIRING) response = BOARD_ID;
+              break;
+
+          }
+          break;
+        case SET_MODE:
+          switch (remPacket.data) {
+            case MODE_SPORT:
+              mode = MODE_SPORT;
+              break;
+            case MODE_CRUISE:
+              mode = MODE_CRUISE;
+              break;
+            case MODE_POLICE:
+              mode = MODE_POLICE;
               break;
           }
           break;
@@ -673,6 +536,17 @@ void radioExchange() {
           // ignore during auto-stop/update/...
           if (state == CONNECTED) {
             setThrottle(remPacket.data);
+            if(remPacket.data == 127){
+              brakesEngaged = false;
+            }
+          }
+
+          if(mode == MODE_POLICE && state != CONNECTED) {
+            if(remPacket.data < 127) {
+              setState(CONNECTED);
+              setThrottle(remPacket.data);
+              brakesEngaged = true;
+            }
           }
           break;
 
@@ -708,22 +582,29 @@ void stateMachine() { // handle auto-stop, endless mode, etc...
       break;
 
     case PUSHING: // pushing with no remote connected
+      checkConnection();
 
-      if (telemetry.getSpeed() < PUSHING_SPEED) { // pushing ended
+      if (telemetry.getSpeed() > PUSHING_SPEED) { // pushing long enough
         if (AUTO_CRUISE_ON) {
           if (secondsSince(timeSpeedReached) > PUSHING_TIME)
             setState(ENDLESS); // start cruise control
-          else
-            setState(IDLE); // not enough pushing
         }
-      } else if (telemetry.getSpeed() > MAX_PUSHING_SPEED) { // downhill
+      }
+
+      if(telemetry.getSpeed() < PUSHING_SPEED) {
+        setState(CONNECTED);
+      }
+
+      if (telemetry.getSpeed() > MAX_PUSHING_SPEED) { // downhill
         setState(STOPPING);
       }
       break;
 
     case ENDLESS: // cruise without remote at ~12 km/h / 7 mph
+      checkConnection();
 
-      autoCruise(PUSHING_SPEED);
+
+      autoCruise(telemetry.getSpeed());
 
       // detect a foot brake /
       if (true) {
@@ -731,14 +612,15 @@ void stateMachine() { // handle auto-stop, endless mode, etc...
         double smoothed = motorCurrent.get();
 
         // sudden change (> 5 A) after 2 seconds
-        if (abs(current - smoothed) > CRUISE_CURRENT_SPIKE && secondsSince(cruiseControlStart) > 2) {
-          setState(IDLE);
-        }
+        /*if (abs(current - smoothed) > CRUISE_CURRENT_SPIKE && secondsSince(cruiseControlStart) > 2) {
+          setState(CONNECTED);
+        }*/
 
         // switch to coasting after some time
         if (secondsSince(cruiseControlStart) > AUTO_CRUISE_TIME) {
           // keep cruise control downhill/uphill
-          if (abs(current) <= CRUISE_CURRENT_LOW) setState(COASTING);
+          //if (abs(current) <= CRUISE_CURRENT_LOW)
+          setState(COASTING);
         }
 
         motorCurrent.add(current);
@@ -749,24 +631,14 @@ void stateMachine() { // handle auto-stop, endless mode, etc...
 
       setThrottle(default_throttle);
       // avoid ENDLESS > IDLE > PUSHING loop
-      if (telemetry.getSpeed() < PUSHING_SPEED) setState(IDLE);
+      if (telemetry.getSpeed() < PUSHING_SPEED) setState(CONNECTED);
       break;
 
     case CONNECTED: // remote is connected
+    // timeout handling
+      checkConnection();
+      if (telemetry.getSpeed() >= PUSHING_SPEED && brakesEngaged == false && mode == MODE_POLICE) setState(PUSHING);
 
-      // timeout handling
-      if (millisSince(timeoutTimer) > timeoutMax) {
-        debug("receiver timeout");
-
-        // No speed is received within the timeout limit.
-        connected = false;
-        timeoutTimer = millis();
-
-        setState(STOPPING);
-
-        // use last throttle
-        throttle = lastThrottle;
-      }
       break;
 
     case STOPPING: // emergency brake when remote has disconnected
@@ -1146,4 +1018,23 @@ int getSettingValue(uint8_t index)
 bool inRange(int val, int minimum, int maximum)
 {
   return ((minimum <= val) && (val <= maximum));
+}
+
+void keepConnection() {
+  timeoutTimer = millis();
+}
+
+void checkConnection() {
+  if (millisSince(timeoutTimer) > timeoutMax) {
+    debug("receiver timeout");
+
+    // No speed is received within the timeout limit.
+    connected = false;
+    timeoutTimer = millis();
+
+    setState(STOPPING);
+
+    // use last throttle
+    throttle = lastThrottle;
+  }
 }

@@ -143,19 +143,23 @@ enum menu_page {
 
 
 const byte subMenus = 7;
-const byte mainMenus = 3;
+const byte mainMenus = 4;
 
 String MENUS[mainMenus][subMenus] = {
     { "Info", "Debug", "", "", "", "", "" },
     { "Remote", "Calibrate", "Pair", "Auto off", "", "", "" },
-    { "Board", "Update",  "Max Speed", "Range", "Cells", "Battery", "Motor" }
+    { "Board", "Update",  "Max Speed", "Range", "Cells", "Battery", "Motor" },
+    { "Mode", "Sport", "Cruise", "Police", "", "", "" }
   };
 
-enum menu_main { MENU_INFO, MENU_REMOTE, MENU_BOARD };
+enum menu_main { MENU_INFO, MENU_REMOTE, MENU_BOARD, MENU_MODE };
 enum menu_info { INFO_DEBUG };
 enum menu_remote { REMOTE_CALIBRATE, REMOTE_PAIR, REMOTE_SLEEP_TIMER };
 enum menu_board { BOARD_UPDATE };
+enum menu_mode { MENU_MODE_SPORT, MENU_MODE_CRUISE, MENU_MODE_POLICE };
 
+bool modeChanged = false;
+int mode = 0;
 
 float currentMenu = 0;
 int subMenu = 0;

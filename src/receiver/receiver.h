@@ -7,18 +7,6 @@
 #include "utils.h"
 #include "VescUart.h"
 
-#ifdef RECEIVER_SCREEN
-  #include <Adafruit_GFX.h>
-  #include "Adafruit_SSD1306.h"
-  // fonts
-  #include "fonts/Lato_Regular_7.h"
-  #include "fonts/Digital.h"
-  #include "fonts/Pico.h"
-  #include <Fonts/Org_01.h> // Adafruit
-  #include <Fonts/FreeSans9pt7b.h>
-  #include <Fonts/FreeSans12pt7b.h>
-#endif
-
 VescUart UART;
 
 // Data structures
@@ -73,19 +61,8 @@ String updateStatus;
 
 unsigned long lastBrakeTime;
 
-
-#ifdef RECEIVER_SCREEN
-const GFXfont* fontDigital = &Segment13pt7b;  // speed, distance, ...
-// const GFXfont* fontPico = &Segment6pt7b;      //
-const GFXfont* fontDesc = &Dialog_plain_9;    // km/h
-const GFXfont* fontMicro = &Org_01;         // connection screen
-
-const GFXfont* fontBig = &FreeSans12pt7b;         // connection screen
-const GFXfont* font = &FreeSans9pt7b;         // connection screen
-
-void updateScreen();
-void drawBattery();
-#endif
+int mode = 0;
+bool brakesEngaged = false;
 
 bool prepareUpdate();
 void acquireSetting();
@@ -112,6 +89,7 @@ void speedControl(uint16_t throttle , bool trigger );
 String uint64ToAddress(uint64_t number);
 String uint64ToString(uint64_t number);
 void updateEEPROMSettings();
-
+void keepConnection();
+void checkConnection();
 
 void updateSetting(uint8_t setting, uint64_t value);

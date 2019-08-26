@@ -87,8 +87,8 @@ void setup() {
     pinMode(PIN_BATTERY, INPUT);
     #ifdef ESP32
       // enable battery probe
-      pinMode(Vext, OUTPUT);
-      digitalWrite(Vext, LOW);
+      pinMode(VEXT, OUTPUT);
+      digitalWrite(VEXT, LOW);
       adcAttachPin(PIN_BATTERY);
       // analogSetClockDiv(255);
     #endif
@@ -202,7 +202,7 @@ void calculateThrottle() {
     if (position < default_throttle) { // breaking
       throttle = position; // brakes always enabled
     } else { // throttle >= 0
-      if (triggerActive()) {
+      if (triggerActive() && mode != MODE_POLICE) {
         // dead man switch activated
         state = NORMAL;
         throttle = position;
@@ -214,14 +214,16 @@ void calculateThrottle() {
       }
     }
     // sleep timer
-    if (stopped && secondsSince(lastInteraction) > REMOTE_SLEEP_TIMEOUT) sleep();
+    if(mode != MODE_POLICE) {
+      if (stopped && secondsSince(lastInteraction) > REMOTE_SLEEP_TIMEOUT) sleep();
+    }
     break;
 
   case NORMAL:
     throttle = position;
 
     // activate cruise mode?
-    if (triggerActive() && throttle == default_throttle && speed() > 3) {
+    if (triggerActive() && throttle == default_throttle && speed() > 3 && mode != MODE_POLICE) {
       cruiseSpeed = speed();
       // cruiseThrottle = throttle;
       state = CRUISE;
@@ -340,7 +342,7 @@ void sleep()
     radio.sleep();
 
 
-    USBDevice.standby();
+    //USBDevice.standby();
 
     delay(200);
 
@@ -378,7 +380,7 @@ void sleep()
     // rtc_gpio_hold_en((gpio_num_t)RF_RST);
     // 20k pull-up resistors on Mosi, Miso, SS and CLK
 
-    gpio_num_t gpio_num = (gpio_num_t)RST_LoRa; // RF_RST;
+    gpio_num_t gpio_num = (gpio_num_t)RF_RST; // RF_RST;
     rtc_gpio_set_direction(gpio_num, RTC_GPIO_MODE_INPUT_ONLY);
     rtc_gpio_pulldown_en(gpio_num);
     rtc_gpio_pullup_dis(gpio_num);
@@ -392,17 +394,18 @@ void sleep()
 
     pinMode(PIN_VIBRO, INPUT);
 
-    pinMode(MISO, INPUT);
-    pinMode(DIO0, INPUT);
-    pinMode(MOSI, INPUT);
+    pinMode(RF_MISO, INPUT);
+    pinMode(RF_DI0, INPUT);
+    pinMode(RF_MOSI, INPUT);
 
-    pinMode(SCK, INPUT);
-    pinMode(RST_LoRa, INPUT);
-    pinMode(SS, INPUT);
+    pinMode(14,INPUT);
+    pinMode(RF_SCK, INPUT);
+    pinMode(RF_RST, INPUT);
+    pinMode(RF_CS, INPUT);
 
     // disable battery probe
-  	pinMode(Vext, OUTPUT);
-  	digitalWrite(Vext, HIGH);
+  	pinMode(VEXT, OUTPUT);
+  	digitalWrite(VEXT, HIGH);
 
     // Enter sleep mode and wait for interrupt
     esp_deep_sleep_start();
@@ -416,7 +419,7 @@ void sleep()
 
   #ifdef ARDUINO_SAMD_ZERO
     SCB->SCR &= ~SCB_SCR_SLEEPDEEP_Msk;
-    USBDevice.attach();
+    //USBDevice.attach();
   #endif
 
   digitalWrite(LED, HIGH);
@@ -786,6 +789,15 @@ void prepatePacket() {
       remPacket.command = SET_THROTTLE;
       remPacket.data = default_throttle;
     }
+    if (modeChanged) {
+      debug("modeChange");
+      remPacket.command = SET_MODE;
+      remPacket.data = mode;
+      modeChanged = false;
+    } else {
+      remPacket.command = SET_THROTTLE;
+      remPacket.data = default_throttle;
+    }
     break;
   case PAIRING:
     debug("send PAIRING");
@@ -933,7 +945,7 @@ float batteryLevelVolts() {
     #elif ESP32
       double reading = (double)total / (double)samples;
       voltage = -0.000000000000016 * pow(reading,4) + 0.000000000118171 * pow(reading,3)- 0.000000301211691 * pow(reading,2)+ 0.001109019271794 * reading + 0.034143524634089;
-      voltage = voltage * 2.64;
+      voltage = voltage * 2.64 * 4.2 / 4.71;
     #endif
 
     // don't smooth at startup
@@ -1307,6 +1319,31 @@ void drawSettingsMenu() {
           switch (subMenuItem) {
             case BOARD_UPDATE:
               requestUpdate = true;
+              backToMainMenu();
+              break;
+          }
+          break;
+        case MENU_MODE:
+          switch (subMenuItem) {
+            case MENU_MODE_SPORT:
+              if(mode != MODE_SPORT){
+                modeChanged = true;
+                mode = MODE_SPORT;
+              }
+              backToMainMenu();
+              break;
+            case MENU_MODE_CRUISE:
+              if(mode != MODE_CRUISE){
+                modeChanged = true;
+                mode = MODE_CRUISE;
+              }
+              backToMainMenu();
+              break;
+            case MENU_MODE_POLICE:
+              if(mode != MODE_POLICE){
+                modeChanged = true;
+                mode = MODE_POLICE;
+              }
               backToMainMenu();
               break;
           }
