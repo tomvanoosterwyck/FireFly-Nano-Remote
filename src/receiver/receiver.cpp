@@ -10,10 +10,10 @@
   #include <LoRa.h>
 
   // OTA
-  #include <WiFi.h>
+  #include <SPI.h>
   #include <ESPmDNS.h>
-  #include <WiFiUdp.h>
   #include <ArduinoOTA.h>
+  #include "WiFi/WiFi.h"
 
     // Uart serial
   HardwareSerial MySerial(1);
@@ -156,12 +156,12 @@ bool prepareUpdate() {
   state = UPDATE;
 
   // replace this with your WiFi network credentials
-  const char* ssid = WIFI_NETWORK; // e.g. "FBI Surveillance Van #34";
+  const char* ssid = WIFI_SSID; // e.g. "FBI Surveillance Van #34";
   const char* password = WIFI_PASSWORD; // e.g. "12345678";
 
   wifiStatus = "Connecting:";
   updateStatus = String(ssid);
-
+  
   WiFi.mode(WIFI_STA);
   WiFi.begin(ssid, password);
   while (WiFi.waitForConnectResult() != WL_CONNECTED) {

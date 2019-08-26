@@ -17,6 +17,8 @@
   #include <Fonts/Org_01.h> // Adafruit
   #include <Fonts/FreeSans9pt7b.h>
   #include <Fonts/FreeSans12pt7b.h>
+
+  // Wifi
 #endif
 
 VescUart UART;
