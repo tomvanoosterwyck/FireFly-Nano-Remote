@@ -340,7 +340,11 @@ void sleep()
     radio.sleep();
 
 
-    USBDevice.standby();
+    #ifdef DEBUG
+      Serial.end();
+    #endif
+
+    //USBDevice.standby();
 
     delay(200);
 
@@ -416,7 +420,11 @@ void sleep()
 
   #ifdef ARDUINO_SAMD_ZERO
     SCB->SCR &= ~SCB_SCR_SLEEPDEEP_Msk;
-    USBDevice.attach();
+    #ifdef DEBUG
+      Serial.begin(115200);
+    #endif
+    
+     //USBDevice.attach();
   #endif
 
   digitalWrite(LED, HIGH);

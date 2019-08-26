@@ -9,7 +9,11 @@ namespace CPU {
 
   void sleep(int pin) {
 
-    USBDevice.standby();
+    #ifdef DEBUG
+      Serial.end();
+    #endif
+    
+    //USBDevice.standby();
 
     delay(200);
 
@@ -24,7 +28,12 @@ namespace CPU {
     // to execute from this point.
 
     SCB->SCR &= ~SCB_SCR_SLEEPDEEP_Msk;
-    USBDevice.attach();
+    
+    #ifdef DEBUG
+      Serial.begin(115200);
+    #endif
+
+    //USBDevice.attach();
 
   }
 
