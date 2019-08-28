@@ -142,18 +142,20 @@ enum menu_page {
 } menuPage = MENU_MAIN;
 
 
-const byte subMenus = 7;
+const byte subMenus = 11;
 const byte mainMenus = 8;
 
+byte subMenusCount[mainMenus] = {10, 10, 10, 10, 10, 10, 10, 10};
+
 String MENUS[mainMenus][subMenus] = {
-    { "Info", "Debug", "", "", "", "", "" },
-    { "Remote", "Calibrate", "Pair", "Auto off", "", "", "" },
-    { "Board", "Update",  "Max Speed", "Range", "Cells", "Battery", "Motor" },
-    { "Board2", "Update",  "Max Speed", "Range", "Cells", "Battery", "Motor" },
-    { "Board3", "Update",  "Max Speed", "Range", "Cells", "Battery", "Motor" },
-    { "Board4", "Update",  "Max Speed", "Range", "Cells", "Battery", "Motor" },
-    { "Board5", "Update",  "Max Speed", "Range", "Cells", "Battery", "Motor" },
-    { "Board6", "Update",  "Max Speed", "Range", "Cells", "Battery", "Motor" }
+    { "Info", "Debug", "", "", "", "", "", "Range", "Cells", "Battery", "Motor" },
+    { "Remote", "Calibrate", "Pair", "Auto off", "", "", "", "Range", "Cells", "Battery", "Motor" },
+    { "Board", "Update",  "Max Speed", "Range", "Cells", "Battery", "Motor", "Range", "Cells", "Battery", "Motor" },
+    { "Board2", "Update",  "Max Speed", "Range", "Cells", "Battery", "Motor", "Range", "Cells", "Battery", "Motor" },
+    { "Board3", "Update",  "Max Speed", "Range", "Cells", "Battery", "Motor", "Range", "Cells", "Battery", "Motor" },
+    { "Board4", "Update",  "Max Speed", "Range", "Cells", "Battery", "Motor", "Range", "Cells", "Battery", "Motor" },
+    { "Board5", "Update",  "Max Speed", "Range", "Cells", "Battery", "Motor", "Range", "Cells", "Battery", "Motor" },
+    { "Board6", "Update",  "Max Speed", "Range", "Cells", "Battery", "Motor", "Range", "Cells", "Battery", "Motor" }
   };
 
 enum menu_main { MENU_INFO, MENU_REMOTE, MENU_BOARD };

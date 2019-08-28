@@ -1254,13 +1254,7 @@ void drawSettingsMenu() {
   // wheel = up/down
   int position = readThrottlePosition();
 
-  // todo: wheel control
-  if (position < default_throttle - 30) {
-    if (currentMenu < subMenus - 1) currentMenu += 0.25;//0.25;
-  }
-  if (position > default_throttle + 30) {
-    if (currentMenu > 0) currentMenu -= 0.25; //0.25;
-  }
+
 
   switch (menuPage) {
 
@@ -1284,7 +1278,7 @@ void drawSettingsMenu() {
         startMenu = round(currentMenu) - 5;
       }
         
-    } else if(round(currentMenu) < startMenu){
+    } else if(round(currentMenu) < startMenu) {
       startMenu -= 1;
       lowestMenu = startMenu;
     }
@@ -1311,8 +1305,33 @@ void drawSettingsMenu() {
   case MENU_SUB:
     // header
     drawString("- " + MENUS[subMenu][0] + " -", -1, y, fontDesc);
+
+      // todo: wheel control
+    if (position < default_throttle - 30) {
+      if (currentMenu < subMenusCount[subMenu] - 1) currentMenu += 0.25;//0.25;
+    }
+    if (position > default_throttle + 30) {
+      if (currentMenu > 0) currentMenu -= 0.25; //0.25;
+    }
+
     y += 20;
-    for (int i = 0; i < subMenus-1; i++) {
+
+    if(round(currentMenu) >= 5) {
+      if(round(currentMenu) > lowestMenu){
+        startMenu = round(currentMenu) - 5;
+      }
+        
+    } else if(round(currentMenu) < startMenu) {
+      startMenu -= 1;
+      lowestMenu = startMenu;
+    }
+
+    if(round(currentMenu) >= lowestMenu) {
+      lowestMenu = round(currentMenu); 
+    }
+
+
+    for (int i = startMenu; i < startMenu + 6; i++) {
       drawString(MENUS[subMenu][i+1], -1, y, fontDesc);
       // draw cursor
       if (i == round(currentMenu)) drawFrame(0, y-10, 64, 14);
