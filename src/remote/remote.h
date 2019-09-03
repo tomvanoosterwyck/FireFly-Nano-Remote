@@ -142,24 +142,39 @@ enum menu_page {
 } menuPage = MENU_MAIN;
 
 
-const byte subMenus = 11;
-const byte mainMenus = 8;
+// Boardmenu
+int currentBoard = 0;
+unsigned long alreadySelectedMillis = 0;
 
-byte subMenusCount[mainMenus] = {10, 10, 10, 10, 10, 10, 10, 10};
+const byte mainBoardMenus = 20;
+
+String BOARDMENUS[mainBoardMenus] = {"Board 1", "Board 2", "Board 3", "Board 4", "Board 5", "Board 6", "Board 7", "Board 8", "Board 9", "Board 10", "Board 11", "Board 12", "Board 13", "Board 14", "Board 15", "Board 16", "Board 17", "Board 18", "Board 19", "Board 20"};
+
+enum menu_boards { BOARDS_SELECT, BOARDS_DELETE };
+
+long boards[20] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+char* conversionChart[20] = {"0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19"};
+
+int selectedBoardSlot = 0;
+
+// Main settings menu
+const byte subMenus = 21;
+const byte mainMenus = 7;
+
+byte subMenusCount[mainMenus] = {3, 2, 6, 10, 10, 10, 10};
 
 String MENUS[mainMenus][subMenus] = {
-    { "Info", "Debug", "", "", "", "", "", "Range", "Cells", "Battery", "Motor" },
-    { "Remote", "Calibrate", "Pair", "Auto off", "", "", "", "Range", "Cells", "Battery", "Motor" },
-    { "Board", "Update",  "Max Speed", "Range", "Cells", "Battery", "Motor", "Range", "Cells", "Battery", "Motor" },
-    { "Board2", "Update",  "Max Speed", "Range", "Cells", "Battery", "Motor", "Range", "Cells", "Battery", "Motor" },
-    { "Board3", "Update",  "Max Speed", "Range", "Cells", "Battery", "Motor", "Range", "Cells", "Battery", "Motor" },
-    { "Board4", "Update",  "Max Speed", "Range", "Cells", "Battery", "Motor", "Range", "Cells", "Battery", "Motor" },
-    { "Board5", "Update",  "Max Speed", "Range", "Cells", "Battery", "Motor", "Range", "Cells", "Battery", "Motor" },
-    { "Board6", "Update",  "Max Speed", "Range", "Cells", "Battery", "Motor", "Range", "Cells", "Battery", "Motor" }
+    { "Info", "Odometer", "Telemetry", "Debug", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "" },
+    { "Remote", "Calibrate", "Pair", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""},
+    { "Board", "Update",  "Max Speed", "Range", "Cells", "Battery", "Motor", "Range", "Cells", "Battery", "Motor", "", "", "", "", "", "", "", "", "", "" },
+    { "Board2", "Update",  "Max Speed", "Range", "Cells", "Battery", "Motor", "Range", "Cells", "Battery", "Motor", "", "", "", "", "", "", "", "", "", "" },
+    { "Board3", "Update",  "Max Speed", "Range", "Cells", "Battery", "Motor", "Range", "Cells", "Battery", "Motor", "", "", "", "", "", "", "", "", "", "" },
+    { "Board4", "Update",  "Max Speed", "Range", "Cells", "Battery", "Motor", "Range", "Cells", "Battery", "Motor", "", "", "", "", "", "", "", "", "", "" },
+    { "Board5", "Update",  "Max Speed", "Range", "Cells", "Battery", "Motor", "Range", "Cells", "Battery", "Motor", "", "", "", "", "", "", "", "", "", "" }
   };
 
 enum menu_main { MENU_INFO, MENU_REMOTE, MENU_BOARD };
-enum menu_info { INFO_DEBUG };
+enum menu_info { INFO_ODOMETER, INFO_TELEMETRY, INFO_DEBUG };
 enum menu_remote { REMOTE_CALIBRATE, REMOTE_PAIR, REMOTE_SLEEP_TIMER };
 enum menu_board { BOARD_UPDATE };
 
@@ -289,3 +304,8 @@ bool triggerActive();
 bool triggerActiveSafe();
 void updateMainDisplay();
 void vibrate(int ms);
+void drawBoardsMenu();
+void loadBoards();
+void saveBoard(int board, uint32_t address);
+void deleteBoard(int board);
+void selectBoard(int board);

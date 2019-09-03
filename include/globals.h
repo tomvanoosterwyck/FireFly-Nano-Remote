@@ -4,7 +4,7 @@
 #include <Arduino.h>
 #include <datatypes.h>
 
-#define FAKE_UART // Comment out after pairing the remote and connecting VESC
+//#define FAKE_UART // Comment out after pairing the remote and connecting VESC
 
 #define DEBUG // Uncomment DEBUG if you need to debug the remote
 
@@ -96,6 +96,7 @@ enum AppState {
   STOPPING,   // emergency brake when remote has disconnected
   STOPPED,
   PAIRING,
+  BOARDS_MENU,
   UPDATE,     // update over WiFi
   COASTING    // waiting for board to slowdown
 };

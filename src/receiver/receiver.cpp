@@ -395,10 +395,12 @@ void pairingRequest() {
 
   // safety checks
 
-  #ifdef FAKE_UART
+  if(millis() < 3000){
     setState(PAIRING);
     return;
-  #endif
+  }
+    
+  
 
   // todo: confirm pairing
 

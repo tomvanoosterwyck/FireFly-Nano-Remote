@@ -78,6 +78,8 @@ void setup() {
   // while (!Serial) { ; }
 
   loadSettings();
+  loadBoards();
+  selectBoard(currentBoard);
 
   #ifdef PIN_VIBRO
     pinMode(PIN_VIBRO, OUTPUT);
@@ -287,11 +289,25 @@ void handleButtons() {
 
     switch (state) {
       case CONNECTING:
-        state = PAIRING; // switch to pairing
+        state = BOARDS_MENU; // switch to boardsmenu
+        loadBoards();
         break;
 
       case PAIRING:
-        state = CONNECTING; // switch to connecting
+        state = BOARDS_MENU; // switch to boards menu
+        loadBoards();
+        break;
+
+      case BOARDS_MENU:
+        switch(menuPage){
+          case MENU_MAIN:
+            state = CONNECTING;
+            break;
+          case MENU_SUB:
+            backToMainMenu();
+            break;
+        }
+        
         break;
 
       default:
@@ -474,6 +490,56 @@ void waitRelease(int button) {
   while (true) {
     if (!pressed(button)) return;
   }
+}
+
+void loadBoards() {
+  preferences.begin("FireFlyNano", false);
+  int i = 0;
+  bool b = false;
+  bool boardAvailable = false;
+  while(b == false){
+    boards[i] = preferences.getLong(conversionChart[i], 0);
+
+    if(boards[i] != 0){ boardAvailable = true; }
+
+    i++;
+    if(i == 19){
+      b = true;
+    }
+  }
+
+  currentBoard = preferences.getLong("CURRENT_BOARD", 0);
+  preferences.end();
+
+  if(boardAvailable == false){
+    state = PAIRING;
+    selectBoard(0);
+  }
+}
+
+void saveBoard(int board, uint32_t address) {
+  boards[board] = address;
+  preferences.begin("FireFlyNano", false);
+  preferences.putLong(conversionChart[board], address);
+  preferences.end();
+  selectBoard(board);
+}
+
+void deleteBoard(int board) {
+  boards[board] = 0;
+  settings.boardID = boards[board];
+  preferences.begin("FireFlyNano", false);
+  preferences.putLong(conversionChart[board], 0);
+  preferences.end();
+  loadBoards();
+}
+
+void selectBoard(int board) {
+  settings.boardID = boards[board];
+  currentBoard = board;
+  preferences.begin("FireFlyNano", false);
+  preferences.putLong("CURRENT_BOARD", board);
+  preferences.end();
 }
 
 void loadSettings() {
@@ -687,8 +753,7 @@ bool receiveData() {
       debug("InfoPacket: board ID " + String(boardInfo.id));
 
       // add to list
-      settings.boardID = boardInfo.id;
-      saveSettings();
+      saveBoard(selectedBoardSlot, boardInfo.id);
 
       // pairing done
       state = NORMAL;
@@ -843,7 +908,9 @@ void transmitToReceiver() {
   // If lost more than 10 transmissions, we can assume that connection is lost.
   if (failCount > 10) {
     switch (state) {
-      case PAIRING: break; // keep pairing mode
+      case PAIRING: 
+      case BOARDS_MENU:
+        break; // keep pairing mode
       case CONNECTING: break;
       default: // connected
         debug("Disconnected");
@@ -1022,7 +1089,10 @@ void updateMainDisplay()
 
     case PAIRING:
       drawPairingScreen();
-      drawThrottle();
+      break;
+
+    case BOARDS_MENU:
+      drawBoardsMenu();
       break;
 
     default: // connected
@@ -1233,6 +1303,154 @@ void backToMainMenu() {
   currentMenu = 0;
 }
 
+void drawBoardsMenu() {
+  
+  //  display.drawFrame(0,0,64,128);
+  int y = 10;
+
+  // wheel = up/down
+  int position = readThrottlePosition();
+
+  switch (menuPage) {
+
+  case MENU_MAIN:
+
+    if (position < default_throttle - 30) {
+      if (currentMenu < mainBoardMenus - 1) currentMenu += 0.25;//0.25;
+    }
+    if (position > default_throttle + 30) {
+      if (currentMenu > 0) currentMenu -= 0.25; //0.25;
+    }
+
+    drawString("- Boards -", -1, y, fontDesc);
+
+    y += 20;
+    
+    if(round(currentMenu) < startMenu) {
+      startMenu = round(currentMenu);
+      lowestMenu = startMenu;
+    }else if(round(currentMenu) >= 5) {
+      if(round(currentMenu) > lowestMenu){
+        startMenu = round(currentMenu) - 5;
+      }
+        
+    } 
+
+    if(round(currentMenu) >= lowestMenu) {
+      lowestMenu = round(currentMenu); 
+    }
+
+    for (int i = startMenu; i < startMenu + 6; i++) {
+      if(boards[i] == 0){
+        String text = String("Pair ");
+        text.concat(i + 1);
+        drawString(text, -1, y, fontDesc);
+      }else{
+        drawString(BOARDMENUS[i], -1, y, fontDesc);
+      }
+      
+      // draw cursor
+      if (i == round(currentMenu)) drawFrame(0, y-10, 64, 14);
+      y += 16;
+    }
+
+    if (pressed(PIN_TRIGGER)) {
+      menuPage = MENU_SUB;
+      subMenu = round(currentMenu);
+      currentMenu = 0;
+      waitRelease(PIN_TRIGGER);
+    }
+    break;
+
+  case MENU_SUB:
+    // header
+    if(boards[subMenu] == 0) {
+      selectedBoardSlot = subMenu;
+      state = PAIRING;
+      backToMainMenu();
+      return;
+    }
+    
+
+    drawString("- " + BOARDMENUS[subMenu] + " -", -1, y, fontDesc);
+
+      // todo: wheel control
+    if (position < default_throttle - 30) {
+      if (currentMenu < 1) currentMenu += 0.25;//0.25;
+    }
+    if (position > default_throttle + 30) {
+      if (currentMenu > 0) currentMenu -= 0.25; //0.25;
+    }
+
+    y += 20;
+
+    if(round(currentMenu) < startMenu) {
+      startMenu = round(currentMenu);
+      lowestMenu = startMenu;
+    }else if(round(currentMenu) >= 5) {
+      if(round(currentMenu) > lowestMenu){
+        startMenu = round(currentMenu) - 5;
+      }
+        
+    } 
+
+    if(round(currentMenu) >= lowestMenu) {
+      lowestMenu = round(currentMenu); 
+    }
+
+
+    for (int i = startMenu; i < startMenu + 6; i++) {
+      switch(i) {
+        case BOARDS_SELECT:
+          if(currentBoard == subMenu){
+            if(secondsSince(alreadySelectedMillis) > 1){
+              drawString("Selected", -1, y, fontDesc);
+            } else {
+              drawString("Already", -1, y, fontDesc);
+            }
+            
+          }else{
+            drawString("Select", -1, y, fontDesc);
+          }
+          break;
+        case BOARDS_DELETE:
+          drawString("Delete", -1, y, fontDesc);
+          break;
+      }
+      
+      // draw cursor
+      if (i == round(currentMenu)) drawFrame(0, y-10, 64, 14);
+      y += 16;
+    }
+
+    if (pressed(PIN_TRIGGER)) {
+      menuPage = MENU_ITEM;
+      subMenuItem = round(currentMenu);
+      waitRelease(PIN_TRIGGER);
+
+      // handle commands
+      switch (subMenuItem) {
+        case BOARDS_SELECT: 
+          if(currentBoard == subMenu){
+            alreadySelectedMillis = millis();
+          } else {
+            selectBoard(subMenu);
+          }
+          menuPage = MENU_SUB;
+          waitRelease(PIN_TRIGGER);
+          break;
+        case BOARDS_DELETE:
+          deleteBoard(subMenu);
+          backToMainMenu();
+          break;
+      }
+    }
+    break;
+
+  }
+
+}
+
 void drawSettingsMenu() {
 
   //  display.drawFrame(0,0,64,128);
@@ -1273,15 +1491,15 @@ void drawSettingsMenu() {
 
     
     
-    if(round(currentMenu) >= 5) {
+    if(round(currentMenu) < startMenu) {
+      startMenu = round(currentMenu);
+      lowestMenu = startMenu;
+    }else if(round(currentMenu) >= 5) {
       if(round(currentMenu) > lowestMenu){
         startMenu = round(currentMenu) - 5;
       }
         
-    } else if(round(currentMenu) < startMenu) {
-      startMenu -= 1;
-      lowestMenu = startMenu;
-    }
+    } 
 
     if(round(currentMenu) >= lowestMenu) {
       lowestMenu = round(currentMenu); 
@@ -1316,15 +1534,15 @@ void drawSettingsMenu() {
 
     y += 20;
 
-    if(round(currentMenu) >= 5) {
+    if(round(currentMenu) < startMenu) {
+      startMenu = round(currentMenu);
+      lowestMenu = startMenu;
+    }else if(round(currentMenu) >= 5) {
       if(round(currentMenu) > lowestMenu){
         startMenu = round(currentMenu) - 5;
       }
         
-    } else if(round(currentMenu) < startMenu) {
-      startMenu -= 1;
-      lowestMenu = startMenu;
-    }
+    } 
 
     if(round(currentMenu) >= lowestMenu) {
       lowestMenu = round(currentMenu); 
@@ -1348,9 +1566,7 @@ void drawSettingsMenu() {
         case MENU_INFO: break;
         case MENU_REMOTE:
           switch (subMenuItem) {
-            case REMOTE_PAIR:
-              state = PAIRING;
-              backToMainMenu(); // exit menu
+            default:
               break;
           }
           break;
