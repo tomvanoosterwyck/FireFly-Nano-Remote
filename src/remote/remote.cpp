@@ -290,7 +290,6 @@ void handleButtons() {
     switch (state) {
       case CONNECTING:
         state = BOARDS_MENU; // switch to boardsmenu
-        loadBoards();
         break;
 
       case PAIRING:
@@ -500,10 +499,10 @@ void loadBoards() {
   while(b == false){
     boards[i] = preferences.getLong(conversionChart[i], 0);
 
-    if(boards[i] != 0){ boardAvailable = true; }
+    if (boards[i] != 0){ boardAvailable = true; }
 
     i++;
-    if(i == 19){
+    if (i == 19){
       b = true;
     }
   }
@@ -511,7 +510,7 @@ void loadBoards() {
   currentBoard = preferences.getLong("CURRENT_BOARD", 0);
   preferences.end();
 
-  if(boardAvailable == false){
+  if (boardAvailable == false){
     state = PAIRING;
     selectBoard(0);
   }
@@ -1326,22 +1325,22 @@ void drawBoardsMenu() {
 
     y += 20;
     
-    if(round(currentMenu) < startMenu) {
+    if (round(currentMenu) < startMenu) {
       startMenu = round(currentMenu);
       lowestMenu = startMenu;
-    }else if(round(currentMenu) >= 5) {
-      if(round(currentMenu) > lowestMenu){
+    } else if (round(currentMenu) >= 5) {
+      if (round(currentMenu) > lowestMenu){
         startMenu = round(currentMenu) - 5;
       }
         
     } 
 
-    if(round(currentMenu) >= lowestMenu) {
+    if (round(currentMenu) >= lowestMenu) {
       lowestMenu = round(currentMenu); 
     }
 
     for (int i = startMenu; i < startMenu + 6; i++) {
-      if(boards[i] == 0){
+      if (boards[i] == 0){
         String text = String("Pair ");
         text.concat(i + 1);
         drawString(text, -1, y, fontDesc);
@@ -1364,7 +1363,7 @@ void drawBoardsMenu() {
 
   case MENU_SUB:
     // header
-    if(boards[subMenu] == 0) {
+    if (boards[subMenu] == 0) {
       selectedBoardSlot = subMenu;
       state = PAIRING;
       backToMainMenu();
@@ -1384,17 +1383,17 @@ void drawBoardsMenu() {
 
     y += 20;
 
-    if(round(currentMenu) < startMenu) {
+    if (round(currentMenu) < startMenu) {
       startMenu = round(currentMenu);
       lowestMenu = startMenu;
-    }else if(round(currentMenu) >= 5) {
-      if(round(currentMenu) > lowestMenu){
+    } else if (round(currentMenu) >= 5) {
+      if (round(currentMenu) > lowestMenu){
         startMenu = round(currentMenu) - 5;
       }
         
     } 
 
-    if(round(currentMenu) >= lowestMenu) {
+    if (round(currentMenu) >= lowestMenu) {
       lowestMenu = round(currentMenu); 
     }
 
@@ -1402,14 +1401,14 @@ void drawBoardsMenu() {
     for (int i = startMenu; i < startMenu + 6; i++) {
       switch(i) {
         case BOARDS_SELECT:
-          if(currentBoard == subMenu){
-            if(secondsSince(alreadySelectedMillis) > 1){
+          if (currentBoard == subMenu){
+            if (secondsSince(alreadySelectedMillis) > 1){
               drawString("Selected", -1, y, fontDesc);
             } else {
               drawString("Already", -1, y, fontDesc);
             }
             
-          }else{
+          } else {
             drawString("Select", -1, y, fontDesc);
           }
           break;
@@ -1431,7 +1430,7 @@ void drawBoardsMenu() {
       // handle commands
       switch (subMenuItem) {
         case BOARDS_SELECT: 
-          if(currentBoard == subMenu){
+          if (currentBoard == subMenu){
             alreadySelectedMillis = millis();
           } else {
             selectBoard(subMenu);
@@ -1491,17 +1490,17 @@ void drawSettingsMenu() {
 
     
     
-    if(round(currentMenu) < startMenu) {
+    if (round(currentMenu) < startMenu) {
       startMenu = round(currentMenu);
       lowestMenu = startMenu;
-    }else if(round(currentMenu) >= 5) {
-      if(round(currentMenu) > lowestMenu){
+    } else if (round(currentMenu) >= 5) {
+      if (round(currentMenu) > lowestMenu){
         startMenu = round(currentMenu) - 5;
       }
         
     } 
 
-    if(round(currentMenu) >= lowestMenu) {
+    if (round(currentMenu) >= lowestMenu) {
       lowestMenu = round(currentMenu); 
     }
 
@@ -1534,17 +1533,17 @@ void drawSettingsMenu() {
 
     y += 20;
 
-    if(round(currentMenu) < startMenu) {
+    if (round(currentMenu) < startMenu) {
       startMenu = round(currentMenu);
       lowestMenu = startMenu;
-    }else if(round(currentMenu) >= 5) {
-      if(round(currentMenu) > lowestMenu){
+    }else if (round(currentMenu) >= 5) {
+      if (round(currentMenu) > lowestMenu){
         startMenu = round(currentMenu) - 5;
       }
         
     } 
 
-    if(round(currentMenu) >= lowestMenu) {
+    if (round(currentMenu) >= lowestMenu) {
       lowestMenu = round(currentMenu); 
     }
 

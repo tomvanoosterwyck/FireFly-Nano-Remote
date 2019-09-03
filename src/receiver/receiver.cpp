@@ -395,7 +395,7 @@ void pairingRequest() {
 
   // safety checks
 
-  if(millis() < 3000){
+  if (millis() < 3000){
     setState(PAIRING);
     return;
   }
@@ -821,7 +821,7 @@ void setStatus(uint8_t code){
   //
   // currentMillis = millis();
   //
-  // if(currentMillis - startCycleMillis >= statusCycleTime){
+  // if (currentMillis - startCycleMillis >= statusCycleTime){
   //   statusCode = code;
   //   statusCycleTime = cycle;
   //   startCycleMillis = currentMillis;
@@ -844,30 +844,30 @@ void updateSetting( uint8_t setting, uint64_t value)
   updateEEPROMSettings();
 
   // The address has changed, we need to reinitiate the receiver module
-  if(setting == 2) {
+  if (setting == 2) {
     // initRadio(radio);
   }
 }
 
 /*
 void setCruise ( bool cruise, uint16_t setPoint ){
-  if( rxSettings.controlMode == 0 ){
+  if ( rxSettings.controlMode == 0 ){
 
     setThrottle( setPoint );
 
   }
-  else if( rxSettings.controlMode == 1 ){
+  else if ( rxSettings.controlMode == 1 ){
 
     setThrottle( setPoint );
 
   }
-  else if( rxSettings.controlMode == 2 ){
+  else if ( rxSettings.controlMode == 2 ){
 
     // Setpoint not used (PID by VESC)
     UART.nunchuck.lowerButton = cruise;
 
     // Make sure the motor doesn't begin to spin wrong way under high load (and don't allow cruise backwards)
-    // if( returnData.rpm < 0 ){
+    // if ( returnData.rpm < 0 ){
     //
     //   UART.nunchuck.lowerButton = false;
     //   UART.nunchuck.valueY = 127;
@@ -918,7 +918,7 @@ void setCruise(uint8_t speed) {
 // void speedControl( uint16_t throttle , bool trigger )
 // {
 //   // Kill switch
-//   if( rxSettings.triggerMode == 0 ){
+//   if ( rxSettings.triggerMode == 0 ){
 //     if ( trigger == true || throttle < 127 ){
 //       setThrottle( throttle );
 //     }
@@ -928,10 +928,10 @@ void setCruise(uint8_t speed) {
 //   }
 //
 //   // Cruise control
-//   else if( rxSettings.triggerMode == 1 ){
-//     if( trigger == true ){
+//   else if ( rxSettings.triggerMode == 1 ){
+//     if ( trigger == true ){
 //
-//       if( cruising == false ){
+//       if ( cruising == false ){
 //         cruiseThrottle = throttle;
 //         cruiseRPM = returnData.rpm;
 //         cruising = true;
@@ -1043,7 +1043,7 @@ String uint64ToString(uint64_t number)
   unsigned long part1 = (unsigned long)((number >> 32)); // Bitwise Right Shift
   unsigned long part2 = (unsigned long)((number));
 
-  if(part1 == 0){
+  if (part1 == 0){
     return String(part2, DEC);
   }
 
@@ -1089,7 +1089,7 @@ void loadEEPROMSettings()
   //   int val = getSettingValue(i);
   //
   //   // If setting default value is -1, don't check if its valid
-  //   if( settingRules[i][0] != -1 )
+  //   if ( settingRules[i][0] != -1 )
   //   {
   //     if ( !inRange( val, settingRules[i][1], settingRules[i][2] ) )
   //     {
@@ -1101,7 +1101,7 @@ void loadEEPROMSettings()
 
   // }
 
-  // if(rxSettings.firmVersion != VERSION){
+  // if (rxSettings.firmVersion != VERSION){
   //
   //   setDefaultEEPROMSettings();
   //
