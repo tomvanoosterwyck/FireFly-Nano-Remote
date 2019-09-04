@@ -582,8 +582,6 @@ void loadSettings() {
   remPacket.version = VERSION;
 
   debug("board id: "+ String(settings.boardID));
-
-  if (settings.boardID == 0) { state = PAIRING; }
 }
 
 // only after chamge
@@ -1090,10 +1088,22 @@ void updateMainDisplay()
   else switch (state) {
 
     case CONNECTING:
-      if (millisSince(stateSwitch) > 170){
+      if (secondsSince(startupTime) > 1) {
+        if (millisSince(stateSwitch) > 50)
+        {
+          drawConnectingScreen();
+          drawThrottle();
+        }
+        else
+        {
+          drawBoardsMenu();
+        }
+      } else {
         drawConnectingScreen();
         drawThrottle();
       }
+
+        
       break;
 
     case PAIRING:
