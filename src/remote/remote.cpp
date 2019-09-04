@@ -78,8 +78,6 @@ void setup() {
   // while (!Serial) { ; }
 
   loadSettings();
-  loadBoards();
-  selectBoard(currentBoard);
 
   #ifdef PIN_VIBRO
     pinMode(PIN_VIBRO, OUTPUT);
@@ -507,7 +505,7 @@ void loadBoards() {
     }
   }
 
-  currentBoard = preferences.getLong("CURRENT_BOARD", 0);
+  currentBoard = preferences.getInt("CURRENT_BOARD", 0);
   preferences.end();
 
   if (boardAvailable == false){
@@ -525,8 +523,10 @@ void saveBoard(int board, uint32_t address) {
 }
 
 void deleteBoard(int board) {
+  if (settings.boardID == boards[board]) {
+    settings.boardID = 0;
+  }
   boards[board] = 0;
-  settings.boardID = boards[board];
   preferences.begin("FireFlyNano", false);
   preferences.putLong(conversionChart[board], 0);
   preferences.end();
@@ -537,7 +537,7 @@ void selectBoard(int board) {
   settings.boardID = boards[board];
   currentBoard = board;
   preferences.begin("FireFlyNano", false);
-  preferences.putLong("CURRENT_BOARD", board);
+  preferences.putInt("CURRENT_BOARD", board);
   preferences.end();
 }
 
@@ -557,8 +557,10 @@ void loadSettings() {
     settings.minHallValue = preferences.getShort("MIN_HALL",  MIN_HALL);
     settings.centerHallValue = preferences.getShort("CENTER_HALL", CENTER_HALL);
     settings.maxHallValue = preferences.getShort("MAX_HALL", MAX_HALL);
-    settings.boardID = preferences.getLong("BOARD_ID", 0);
     preferences.end();
+
+    loadBoards();
+    selectBoard(currentBoard);
 
   #elif ARDUINO_SAMD_ZERO
 
@@ -590,7 +592,6 @@ void saveSettings() {
     preferences.putShort("MIN_HALL",  settings.minHallValue);
     preferences.putShort("CENTER_HALL", settings.centerHallValue);
     preferences.putShort("MAX_HALL", settings.maxHallValue);
-    preferences.putLong("BOARD_ID", settings.boardID);
     preferences.end();
 
   #elif ARDUINO_SAMD_ZERO
