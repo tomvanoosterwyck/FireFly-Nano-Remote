@@ -1152,6 +1152,13 @@ void drawPairingScreen() {
   y += 14;
   drawString((triggerActive() ? "T " : "0 ") + String(hallValue) + " " + String(throttle, 0), -1, y, fontMicro);
 
+  int level = batteryLevel;
+
+  if (level > 20 || signalBlink)
+  { // blink
+    y += 12;
+    drawString(String(level) + "% " + String(batteryLevelVolts(), 2) + "v", -1, y, fontMicro);
+  }
 }
 
 void drawConnectingScreen() {
@@ -1416,6 +1423,13 @@ void drawBoardsMenu() {
         case BOARDS_DELETE:
           drawString("Delete", -1, y, fontDesc);
           break;
+        case 4:
+          drawString("Address:", -1, y, fontDesc);
+          break;
+        case 5:
+          drawString(String(boards[subMenu], HEX), -1, y, fontDesc);
+          break;
+          
       }
       
       // draw cursor
