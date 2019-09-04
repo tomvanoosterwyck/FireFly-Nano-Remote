@@ -71,28 +71,29 @@ void setup() {
 
   startupTime = millis();
 
-  #ifdef DEBUG
-    Serial.begin(115200);
-  #endif
-
   // while (!Serial) { ; }
 
   loadSettings();
 
-  #ifdef PIN_VIBRO
-    pinMode(PIN_VIBRO, OUTPUT);
-    digitalWrite(PIN_VIBRO, LOW);
-  #endif
-  #ifdef PIN_BATTERY
-    pinMode(PIN_BATTERY, INPUT);
-    #ifdef ESP32
-      // enable battery probe
-      pinMode(Vext, OUTPUT);
-      digitalWrite(Vext, LOW);
-      adcAttachPin(PIN_BATTERY);
-      // analogSetClockDiv(255);
-    #endif
-  #endif
+  if (settings.debugMode)
+  {
+    Serial.begin(115200);
+  }
+
+#ifdef PIN_VIBRO
+  pinMode(PIN_VIBRO, OUTPUT);
+  digitalWrite(PIN_VIBRO, LOW);
+#endif
+#ifdef PIN_BATTERY
+  pinMode(PIN_BATTERY, INPUT);
+#ifdef ESP32
+  // enable battery probe
+  pinMode(Vext, OUTPUT);
+  digitalWrite(Vext, LOW);
+  adcAttachPin(PIN_BATTERY);
+  // analogSetClockDiv(255);
+#endif
+#endif
 
   pinMode(PIN_TRIGGER, INPUT_PULLUP);
   pinMode(PIN_BUTTON, INPUT_PULLUP);
@@ -554,6 +555,7 @@ void loadSettings() {
     // }
 
     preferences.begin("FireFlyNano", false);
+    settings.debugMode = preferences.getBool("DEBUG", false);
     settings.minHallValue = preferences.getShort("MIN_HALL",  MIN_HALL);
     settings.centerHallValue = preferences.getShort("CENTER_HALL", CENTER_HALL);
     settings.maxHallValue = preferences.getShort("MAX_HALL", MAX_HALL);
@@ -589,10 +591,13 @@ void saveSettings() {
   #ifdef ESP32
 
     preferences.begin("FireFlyNano", false);
+    preferences.putBool("DEBUG", settings.debugMode);
     preferences.putShort("MIN_HALL",  settings.minHallValue);
     preferences.putShort("CENTER_HALL", settings.centerHallValue);
     preferences.putShort("MAX_HALL", settings.maxHallValue);
     preferences.end();
+
+    settings.needSave = false;
 
   #elif ARDUINO_SAMD_ZERO
 
@@ -1308,6 +1313,9 @@ void calibrateScreen() {
 void backToMainMenu() {
   menuPage = MENU_MAIN;
   currentMenu = 0;
+  if (settings.needSave == true) {
+    saveSettings();
+  }
 }
 
 void drawBoardsMenu() {
@@ -1631,18 +1639,27 @@ void drawDebugPage() {
 
   //  display.drawFrame(0,0,64,128);
 
-  int y = 10;
-  drawString(String(settings.boardID, HEX), -1, y, fontDesc);
+  if (pressed(PIN_TRIGGER))
+  {
+    settings.debugMode = !settings.debugMode;
+    settings.needSave = true;
+    waitRelease(PIN_TRIGGER);
+  }
 
-  y = 35;
-  drawStringCenter(String(lastDelay), " ms", y);
+    int y = 10;
+    drawString(String(settings.boardID, HEX), -1, y, fontDesc);
 
-  y += 25;
-  drawStringCenter(String(lastRssi, 0), " db", y);
+    y = 35;
+    drawStringCenter(String(lastDelay), " ms", y);
 
-  y += 25;
-  drawStringCenter(String(readThrottlePosition()), String(hallValue), y);
+    y += 25;
+    drawStringCenter(String(lastRssi, 0), " db", y);
 
+    y += 25;
+    drawStringCenter(String(readThrottlePosition()), String(hallValue), y);
+
+    y += 25;
+    drawStringCenter(settings.debugMode ? "On" : "Off", " ", y);
 }
 
 int getStringWidth(String s) {
@@ -2045,4 +2062,10 @@ void vibrate(int ms) {
     delay(ms);
     digitalWrite(PIN_VIBRO, LOW);
   #endif
+}
+
+void debug(String x) {
+  if (settings.debugMode) {
+    Serial.println(x);
+  }
 }

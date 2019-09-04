@@ -1149,3 +1149,9 @@ bool inRange(int val, int minimum, int maximum)
 {
   return ((minimum <= val) && (val <= maximum));
 }
+
+#ifdef DEBUG
+  #define debug(x) Serial.println(x)
+#else
+  #define debug(x)
+#endif

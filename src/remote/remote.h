@@ -42,6 +42,8 @@
 
 struct RemoteSettings {
   bool valid;
+  bool needSave = false;
+  bool debugMode = false;
   short minHallValue = MIN_HALL;
   short centerHallValue = CENTER_HALL;
   short maxHallValue = MAX_HALL;
@@ -309,3 +311,4 @@ void loadBoards();
 void saveBoard(int board, uint32_t address);
 void deleteBoard(int board);
 void selectBoard(int board);
+void debug(String x);

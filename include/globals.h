@@ -192,10 +192,4 @@ struct ConfigPacket {
 
 const int default_throttle = 127;
 
-#ifdef DEBUG
-  #define debug(x) Serial.println (x)
-#else
-  #define debug(x)
-#endif
-
 #endif
