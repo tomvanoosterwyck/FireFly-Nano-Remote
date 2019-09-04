@@ -233,6 +233,7 @@ void calculateThrottle() {
       if (secondsSince(stopTime) > REMOTE_LOCK_TIMEOUT) {
         // lock remote
         state = IDLE;
+        page = PAGE_MAIN;
         debug("locked");
       }
     }
@@ -300,6 +301,7 @@ void handleButtons() {
         switch(menuPage){
           case MENU_MAIN:
             state = CONNECTING;
+            stateSwitch = millis();
             break;
           case MENU_SUB:
             backToMainMenu();
@@ -1088,8 +1090,10 @@ void updateMainDisplay()
   else switch (state) {
 
     case CONNECTING:
-      drawConnectingScreen();
-      drawThrottle();
+      if (millisSince(stateSwitch) > 170){
+        drawConnectingScreen();
+        drawThrottle();
+      }
       break;
 
     case PAIRING:
@@ -1314,7 +1318,7 @@ void calibrateScreen() {
 void backToMainMenu() {
   menuPage = MENU_MAIN;
   currentMenu = 0;
-  if (settings.needSave == true) {
+  if (settings.needSave) {
     saveSettings();
   }
 }
@@ -1589,8 +1593,10 @@ void drawSettingsMenu() {
         case MENU_INFO: break;
         case MENU_REMOTE:
           switch (subMenuItem) {
-            case REMOTE_BOARDS:
-              state = BOARDS_MENU;
+            case REMOTE_DISCONNECT:
+              state = CONNECTING;
+              page = PAGE_MAIN;
+              selectBoard(20);
               backToMainMenu();
               break;
             default:

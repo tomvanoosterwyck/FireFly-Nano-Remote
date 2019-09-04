@@ -105,6 +105,8 @@ byte hallCenterMargin = 0;
 AppState state = CONNECTING;
 AppState receiverState;
 
+unsigned long stateSwitch = 0;
+
 // OLED display
 unsigned long lastSignalBlink;
 bool signalBlink = false;
@@ -154,7 +156,7 @@ String BOARDMENUS[mainBoardMenus] = {"Board 1", "Board 2", "Board 3", "Board 4",
 
 enum menu_boards { BOARDS_SELECT, BOARDS_DELETE };
 
-uint32_t boards[20] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+uint32_t boards[21] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 char* conversionChart[20] = {"0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19"};
 
 int selectedBoardSlot = 0;
@@ -167,7 +169,7 @@ byte subMenusCount[mainMenus] = {3, 2, 6, 10, 10, 10, 10};
 
 String MENUS[mainMenus][subMenus] = {
     { "Info", "Odometer", "Telemetry", "Debug", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "" },
-    { "Remote", "Boards", "Calibrate", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""},
+    { "Remote", "Deselect", "Calibrate", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""},
     { "Board", "Update",  "Max Speed", "Range", "Cells", "Battery", "Motor", "Range", "Cells", "Battery", "Motor", "", "", "", "", "", "", "", "", "", "" },
     { "Board2", "Update",  "Max Speed", "Range", "Cells", "Battery", "Motor", "Range", "Cells", "Battery", "Motor", "", "", "", "", "", "", "", "", "", "" },
     { "Board3", "Update",  "Max Speed", "Range", "Cells", "Battery", "Motor", "Range", "Cells", "Battery", "Motor", "", "", "", "", "", "", "", "", "", "" },
@@ -177,7 +179,7 @@ String MENUS[mainMenus][subMenus] = {
 
 enum menu_main { MENU_INFO, MENU_REMOTE, MENU_BOARD };
 enum menu_info { INFO_ODOMETER, INFO_TELEMETRY, INFO_DEBUG };
-enum menu_remote { REMOTE_BOARDS, REMOTE_CALIBRATE, REMOTE_SLEEP_TIMER };
+enum menu_remote { REMOTE_DISCONNECT, REMOTE_CALIBRATE, REMOTE_SLEEP_TIMER };
 enum menu_board { BOARD_UPDATE };
 
 
