@@ -1264,10 +1264,11 @@ void calibrateScreen() {
       settings.minHallValue = tempSettings.minHallValue;
       settings.maxHallValue = tempSettings.maxHallValue;
 
+      settings.needSave = true;
+
       backToMainMenu();
       display.setRotation(DISPLAY_ROTATION);
-      saveSettings();
-
+      waitRelease(PIN_TRIGGER);
       return;
     }
   }
@@ -1588,6 +1589,10 @@ void drawSettingsMenu() {
         case MENU_INFO: break;
         case MENU_REMOTE:
           switch (subMenuItem) {
+            case REMOTE_BOARDS:
+              state = BOARDS_MENU;
+              backToMainMenu();
+              break;
             default:
               break;
           }

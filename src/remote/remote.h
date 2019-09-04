@@ -167,7 +167,7 @@ byte subMenusCount[mainMenus] = {3, 2, 6, 10, 10, 10, 10};
 
 String MENUS[mainMenus][subMenus] = {
     { "Info", "Odometer", "Telemetry", "Debug", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "" },
-    { "Remote", "Calibrate", "Pair", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""},
+    { "Remote", "Boards", "Calibrate", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""},
     { "Board", "Update",  "Max Speed", "Range", "Cells", "Battery", "Motor", "Range", "Cells", "Battery", "Motor", "", "", "", "", "", "", "", "", "", "" },
     { "Board2", "Update",  "Max Speed", "Range", "Cells", "Battery", "Motor", "Range", "Cells", "Battery", "Motor", "", "", "", "", "", "", "", "", "", "" },
     { "Board3", "Update",  "Max Speed", "Range", "Cells", "Battery", "Motor", "Range", "Cells", "Battery", "Motor", "", "", "", "", "", "", "", "", "", "" },
@@ -177,7 +177,7 @@ String MENUS[mainMenus][subMenus] = {
 
 enum menu_main { MENU_INFO, MENU_REMOTE, MENU_BOARD };
 enum menu_info { INFO_ODOMETER, INFO_TELEMETRY, INFO_DEBUG };
-enum menu_remote { REMOTE_CALIBRATE, REMOTE_PAIR, REMOTE_SLEEP_TIMER };
+enum menu_remote { REMOTE_BOARDS, REMOTE_CALIBRATE, REMOTE_SLEEP_TIMER };
 enum menu_board { BOARD_UPDATE };
 
 
