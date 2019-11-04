@@ -117,5 +117,3 @@ void updateEEPROMSettings();
 
 
 void updateSetting(uint8_t setting, uint64_t value);
-
-void debug(String x);

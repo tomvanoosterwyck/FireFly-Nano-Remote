@@ -14,7 +14,6 @@
   #include <ESPmDNS.h>
   #include <ArduinoOTA.h>
   #include "WiFi/WiFi.h"
-  #include "wifi_credentials.h"
 
     // Uart serial
   HardwareSerial MySerial(1);
@@ -1151,6 +1150,8 @@ bool inRange(int val, int minimum, int maximum)
   return ((minimum <= val) && (val <= maximum));
 }
 
-void debug(String x) {
-  Serial.println(x);
-}
+#ifdef DEBUG
+  #define debug(x) Serial.println(x)
+#else
+  #define debug(x)
+#endif

@@ -31,7 +31,7 @@ const float CRUISE_CURRENT_LOW = 5.0;   // Amps
 const float MAX_PUSHING_SPEED = 20.0;   // km/h
 
 // Auto stop (in seconds)
-const float AUTO_BRAKE_TIME = 10.0;    // time to apply the full brakes
+const float AUTO_BRAKE_TIME = 5.0;    // time to apply the full brakes
 const int AUTO_BRAKE_RELEASE = 5;     // time to release brakes after the full stop
 
 // UART
@@ -40,27 +40,27 @@ const uint16_t uartPullInterval = 150;
 const int UART_TIMEOUT = 10; // 10ms for 115200 bauds, 100ms for 9600 bauds
 const int REMOTE_RX_TIMEOUT = 20; // ms
 
-const int REMOTE_LOCK_TIMEOUT = 5; // seconds to lock throttle when idle
+const int REMOTE_LOCK_TIMEOUT = 10; // seconds to lock throttle when idle
 const int REMOTE_SLEEP_TIMEOUT = 180; // seconds to go to sleep mode
 
 // turn off display if battery < 15%
 const int DISPLAY_BATTERY_MIN = 15;
 
 // VESC current, for graphs only
-const int MOTOR_MIN = -50;
-const int MOTOR_MAX = 55;
-const int BATTERY_MIN = -50;
-const int BATTERY_MAX = 55;
+const int MOTOR_MIN = -30;
+const int MOTOR_MAX = 30;
+const int BATTERY_MIN = -30;
+const int BATTERY_MAX = 30;
 
 // default board configuration
-const int MAX_SPEED = 38;       // KM/H
-const int MAX_RANGE = 45;       // KM
+const int MAX_SPEED = 30;       // KM/H
+const int MAX_RANGE = 30;       // KM
 const int BATTERY_CELLS = 10;
 const int BATTERY_TYPE = 0;     // 0: LI-ION | 1: LIPO
-const int MOTOR_POLES = 14;
+const int MOTOR_POLES = 22;
 const int WHEEL_DIAMETER = 90;
-const int WHEEL_PULLEY = 36;
-const int MOTOR_PULLEY = 15;
+const int WHEEL_PULLEY = 1;
+const int MOTOR_PULLEY = 1;
 
 #define VERSION 2
 
