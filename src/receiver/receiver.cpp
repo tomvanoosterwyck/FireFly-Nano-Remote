@@ -13,7 +13,6 @@
   #include <SPI.h>
   #include <ESPmDNS.h>
   #include <ArduinoOTA.h>
-  #include "WiFi/WiFi.h"
   #include "wifi_credentials.h"
 
     // Uart serial
@@ -49,7 +48,7 @@ void setup()
   // wait for VESC?
   delay(1000);
 
-  Serial.begin(115200);
+  Serial.begin(9600);
 
   // while (!Serial) {}; // wait for serial port to connect. Needed for native USB port only
 
@@ -84,6 +83,7 @@ void setup()
 
     #ifndef FAKE_UART
       UART.setSerialPort(&MySerial);
+      // Comment this line for debugging without VESC
       MySerial.begin(UART_SPEED, SERIAL_8N1, RX, TX);
     #endif
 
@@ -149,7 +149,6 @@ float batteryPackPercentage( float voltage ) {
   return percentage;
 }
 
-#ifdef RECEIVER_SCREEN
 bool prepareUpdate() {
 
   // safety checks
@@ -218,7 +217,12 @@ bool prepareUpdate() {
 
   wifiStatus = "IP: " + WiFi.localIP().toString();
   updateStatus = "Waiting...";
+  debug(wifiStatus);
+
+  
 }
+
+#ifdef RECEIVER_SCREEN
 
 int getStringWidth(String s) {
 
@@ -372,7 +376,9 @@ void loop() { // core 1
     radioExchange();
     stateMachine();
   #elif RECEIVER_SCREEN
-    if (state == UPDATE) ArduinoOTA.handle();
+    if (state == UPDATE) {
+      ArduinoOTA.handle();
+    }
     updateScreen(); // 25 ms
     vTaskDelay(1);
   #endif
@@ -611,11 +617,16 @@ void setState(AppState newState) {
   }
 
   // apply state
+  //debug(newState);
   state = newState;
 }
 
 void radioExchange() {
 
+  if(state == UPDATE) {
+    receivedData = false;
+    return;
+  }
   // controlStatusLed();
 
   /* Begin listen for transmission */
@@ -643,12 +654,12 @@ void radioExchange() {
         case SET_STATE:
           switch (remPacket.data) {
             case UPDATE:
-              #ifdef ESP32
               prepareUpdate();
-              #endif
               break;
             case PAIRING:
-              pairingRequest();
+              if(state != UPDATE) {
+                pairingRequest();
+              }
               // request confirmed?
               if (state == PAIRING) response = BOARD_ID;
               break;

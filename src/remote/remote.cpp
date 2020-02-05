@@ -684,23 +684,16 @@ bool sendData() {
   //       + ", counter: " + String(remPacket.counter)
   //    );
 
-  #ifdef ESP32
+  LoRa.beginPacket(sz);
+  int t = 0;
+  t = LoRa.write(buf, sz);
+  LoRa.endPacket();
 
-    LoRa.beginPacket(sz);
-    int t = 0;
-    t = LoRa.write(buf, sz);
-    LoRa.endPacket();
+  // LoRa.receive(PACKET_SIZE + CRC_SIZE);
 
-    // LoRa.receive(PACKET_SIZE + CRC_SIZE);
+  sent = t == sz;
 
-    sent = t == sz;
 
-  #elif ARDUINO_SAMD_ZERO
-
-    sent = radio.send(buf, sz);
-    if (sent) radio.waitPacketSent();
-
-  #endif
 
   return sent;
 }
