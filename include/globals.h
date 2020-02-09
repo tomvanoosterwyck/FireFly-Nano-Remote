@@ -9,7 +9,7 @@
 #define DEBUG // Uncomment DEBUG if you need to debug the remote
 
 const COMM_PACKET_ID VESC_COMMAND = COMM_GET_VALUES; // VESC
-// const COMM_PACKET_ID VESC_COMMAND = COMM_GET_UNITY_VALUES; // Enertion Unity
+// const COMM_PACKET_ID VESC_COMMAND = COMM_GET_UNITY_VALUES; // Enertion Unity // Disabled for now
 
 /*
   Endless ride - when remote is off and speed is over 12 km/h for 3 seconds,
@@ -56,7 +56,7 @@ const int BATTERY_MAX = 55;
 const int MAX_SPEED = 38;       // KM/H
 const int MAX_RANGE = 45;       // KM
 const int BATTERY_CELLS = 10;
-const int BATTERY_TYPE = 0;     // 0: LI-ION | 1: LIPO
+const int BOARD_BATTERY_TYPE = 0;     // 0: LI-ION | 1: LIPO
 const int MOTOR_POLES = 14;
 const int WHEEL_DIAMETER = 90;
 const int WHEEL_PULLEY = 36;

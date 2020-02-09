@@ -1081,7 +1081,7 @@ void setDefaultEEPROMSettings()
   boardConfig.maxSpeed = MAX_SPEED; // 30 km/h
   boardConfig.maxRange = MAX_RANGE;      // km
   boardConfig.batteryCells = BATTERY_CELLS;
-  boardConfig.batteryType = BATTERY_TYPE;    // 0: Li-ion | 1: LiPo
+  boardConfig.batteryType = BOARD_BATTERY_TYPE;    // 0: Li-ion | 1: LiPo
   boardConfig.motorPoles = MOTOR_POLES;
   boardConfig.wheelDiameter = WHEEL_DIAMETER;
   boardConfig.wheelPulley = WHEEL_PULLEY;

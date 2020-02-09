@@ -149,7 +149,7 @@ class VescUart
 		 * @param      payload  - The final payload ready to extract data from
 		 * @return     True if the process was a success
 		 */
-		bool unpackPayload(uint8_t * message, int lenMes, uint8_t * payload);
+		bool unpackPayload(uint8_t * message, int lenMes, uint8_t * payload, uint16_t lenPay);
 
 		/**
 		 * @brief      Extracts the data from the received payload

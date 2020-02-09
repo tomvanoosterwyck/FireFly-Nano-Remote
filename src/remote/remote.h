@@ -163,24 +163,26 @@ int selectedBoardSlot = 0;
 
 // Main settings menu
 const byte subMenus = 21;
-const byte mainMenus = 7;
+const byte mainMenus = 5;
 
-byte subMenusCount[mainMenus] = {3, 2, 6, 10, 10, 10, 10};
+byte subMenusCount[mainMenus] = {3, 2, 4, 2, 5};
 
 String MENUS[mainMenus][subMenus] = {
     { "Info", "Odometer", "Telemetry", "Debug", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "" },
     { "Remote", "Deselect", "Calibrate", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""},
-    { "Board", "Update",  "Max Speed", "Range", "Cells", "Battery", "Motor", "Range", "Cells", "Battery", "Motor", "", "", "", "", "", "", "", "", "", "" },
-    { "Board2", "Update",  "Max Speed", "Range", "Cells", "Battery", "Motor", "Range", "Cells", "Battery", "Motor", "", "", "", "", "", "", "", "", "", "" },
-    { "Board3", "Update",  "Max Speed", "Range", "Cells", "Battery", "Motor", "Range", "Cells", "Battery", "Motor", "", "", "", "", "", "", "", "", "", "" },
-    { "Board4", "Update",  "Max Speed", "Range", "Cells", "Battery", "Motor", "Range", "Cells", "Battery", "Motor", "", "", "", "", "", "", "", "", "", "" },
-    { "Board5", "Update",  "Max Speed", "Range", "Cells", "Battery", "Motor", "Range", "Cells", "Battery", "Motor", "", "", "", "", "", "", "", "", "", "" }
+    { "Board", "Info",  "Update", "WiFi On", "WiFi Off", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "" },
+    { "Mode", "Normal",  "Push", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "" },
+    { "Profile", "Profile 1",  "Profile 2", "Profile 3", "Profile 4", "Profile 5", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "" }
   };
 
-enum menu_main { MENU_INFO, MENU_REMOTE, MENU_BOARD };
+// TODO: Move Deselect to BOARD
+
+enum menu_main { MENU_INFO, MENU_REMOTE, MENU_BOARD, MENU_MODE, MENU_PROFILE };
 enum menu_info { INFO_ODOMETER, INFO_TELEMETRY, INFO_DEBUG };
-enum menu_remote { REMOTE_DISCONNECT, REMOTE_CALIBRATE, REMOTE_SLEEP_TIMER };
-enum menu_board { BOARD_UPDATE };
+enum menu_remote { REMOTE_DISCONNECT, REMOTE_CALIBRATE };
+enum menu_board { BOARD_INFO, BOARD_UPDATE, BOARD_WIFI_ON, BOARD_WIFI_OFF };
+enum menu_mode { MODE_NORMAL, MODE_PUSH };
+enum menu_profile { PROFILE_1, PROFILE_2, PROFILE_3, PROFILE_4, PROFILE_5 };
 
 
 float currentMenu = 0;

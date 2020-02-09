@@ -92,9 +92,9 @@ int VescUart::receiveUartMessage(uint8_t * payloadReceived) {
 	// Messages > 255 starts with "3" 2nd and 3rd byte is length combined with 1st >>8 and then &0xFF
 
 	uint16_t counter = 0;
-	uint16_t endMessage = 256;
+	uint16_t endMessage = 512;
 	bool messageRead = false;
-	uint8_t messageReceived[256];
+	uint8_t messageReceived[512];
 	uint16_t lenPayload = 0;
 
 	uint32_t timeout = millis() + maxTimeout; // Defining the timestamp for timeout (100ms before timeout)
@@ -110,15 +110,15 @@ int VescUart::receiveUartMessage(uint8_t * payloadReceived) {
 				switch (messageReceived[0])
 				{
 					case 2:
-						endMessage = messageReceived[1] + 5; //Payload size + 2 for sice + 3 for SRC and End.
 						lenPayload = messageReceived[1];
+						endMessage = lenPayload + 5; //Payload size + 2 for size + 3 for SRC and End.
 					break;
 
 					case 3:
-						// ToDo: Add Message Handling > 255 (starting with 3)
-						if( debugPort != NULL ){
-							debugPort->println("Message is larger than 256 bytes - not supported");
-						}
+						// ToDo: Add Message Handling > 255 (starting with 3) // SHOULD WORK NOW (JAMIE4224)
+						lenPayload = messageReceived[1] << 8;
+						lenPayload |= messageReceived[2];
+						endMessage = lenPayload + 6;
 					break;
 
 					default:
@@ -150,7 +150,7 @@ int VescUart::receiveUartMessage(uint8_t * payloadReceived) {
 	bool unpacked = false;
 
 	if (messageRead) {
-		unpacked = unpackPayload(messageReceived, endMessage, payloadReceived);
+		unpacked = unpackPayload(messageReceived, endMessage, payloadReceived, lenPayload);
 	}
 
 	if (unpacked) {
@@ -164,7 +164,7 @@ int VescUart::receiveUartMessage(uint8_t * payloadReceived) {
 }
 
 
-bool VescUart::unpackPayload(uint8_t * message, int lenMes, uint8_t * payload) {
+bool VescUart::unpackPayload(uint8_t * message, int lenMes, uint8_t * payload, uint16_t lenPay) {
 
 	uint16_t crcMessage = 0;
 	uint16_t crcPayload = 0;
@@ -178,10 +178,21 @@ bool VescUart::unpackPayload(uint8_t * message, int lenMes, uint8_t * payload) {
 		debugPort->print("SRC received: "); debugPort->println(crcMessage);
 	}
 
-	// Extract payload:
-	memcpy(payload, &message[2], message[1]);
+	switch (message[0])
+	{
+		case 2:
+			// Extract payload: 
+			memcpy(payload, &message[2], message[1]);
 
-	crcPayload = crc16(payload, message[1]);
+			crcPayload = crc16(payload, message[1]);
+		break;
+
+		case 3:
+			memcpy(payload, &message[3], lenPay);
+
+			crcPayload = crc16(payload, lenPay);
+		break;
+	}
 
 	if( debugPort != NULL ){
 		debugPort->print("SRC calc: "); debugPort->println(crcPayload);
@@ -193,7 +204,7 @@ bool VescUart::unpackPayload(uint8_t * message, int lenMes, uint8_t * payload) {
 			serialPrint(message, lenMes); debugPort->println();
 
 			debugPort->print("Payload :      ");
-			serialPrint(payload, message[1] - 1); debugPort->println();
+			serialPrint(payload, lenPay - 1); debugPort->println();
 		}
 
 		return true;
@@ -275,50 +286,6 @@ bool VescUart::processReadPacket(uint8_t * message) {
 			data.tachometer 		= buffer_get_int32(message, &ind);
 			data.tachometerAbs 		= buffer_get_int32(message, &ind);
 			return true;
-
-		case COMM_GET_UNITY_VALUES:
-
-			data.tempFET   = buffer_get_float16(message, 10.0, &ind); // mc_interface_temp_fet_filtered
-			buffer_get_float16(message, 10.0, &ind); // mc_interface_temp_fet_filtered2
-
-			data.tempMotor = buffer_get_float16(message, 10.0, &ind); // mc_interface_temp_motor_filtered
-			buffer_get_float16(message, 10.0, &ind); // mc_interface_temp_motor_filtered2
-
-			data.avgMotorCurrent 	= buffer_get_float32(message, 100.0, &ind); // mc_interface_read_reset_avg_motor_current
-			buffer_get_float32(message, 100.0, &ind); // mc_interface_read_reset_avg_motor_current
-
-			data.avgInputCurrent 	= buffer_get_float32(message, 100.0, &ind); // mc_interface_read_reset_avg_input_current
-
-			ind += 16; // Skip the next 16 bytes
-			// 	buffer_append_float32(send_buffer, mc_interface_read_reset_avg_id(), 1e2, &ind);
-			// 	buffer_append_float32(send_buffer, mc_interface_read_reset_avg_id2(), 1e2, &ind); //
-			// 	buffer_append_float32(send_buffer, mc_interface_read_reset_avg_iq(), 1e2, &ind);
-			// 	buffer_append_float32(send_buffer, mc_interface_read_reset_avg_iq2(), 1e2, &ind); //
-
-			data.dutyCycleNow 		= buffer_get_float16(message, 1000.0, &ind); // mc_interface_get_duty_cycle_now
-			buffer_get_float16(message, 1000.0, &ind);
-
-			data.rpm 				= buffer_get_int32(message, &ind); // mc_interface_get_rpm
-			buffer_get_int32(message, &ind);
-
-			data.inpVoltage 		= buffer_get_float16(message, 10.0, &ind);
-			data.ampHours 			= buffer_get_float32(message, 10000.0, &ind);
-			data.ampHoursCharged 	= buffer_get_float32(message, 10000.0, &ind);
-
-			ind += 8; // Skip the next 8 bytes
-			// 	buffer_append_float32(send_buffer, mc_interface_get_watt_hours(false), 1e4, &ind);
-			// 	buffer_append_float32(send_buffer, mc_interface_get_watt_hours_charged(false), 1e4, &ind);
-
-			data.tachometer 		= buffer_get_int32(message, &ind); // mc_interface_get_tachometer_value
-			buffer_get_int32(message, &ind);
-
-			data.tachometerAbs 		= buffer_get_int32(message, &ind); // mc_interface_get_tachometer_abs_value
-			buffer_get_int32(message, &ind);
-
-			// 	send_buffer[ind++] = mc_interface_get_fault();
-			return true;
-
-
 		default:
 			return false;
 		break;
