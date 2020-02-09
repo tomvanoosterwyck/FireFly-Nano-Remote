@@ -286,6 +286,8 @@ bool VescUart::processReadPacket(uint8_t * message) {
 			data.tachometer 		= buffer_get_int32(message, &ind);
 			data.tachometerAbs 		= buffer_get_int32(message, &ind);
 			return true;
+			
+
 		default:
 			return false;
 		break;
@@ -425,3 +427,51 @@ void VescUart::printVescValues() {
 		debugPort->print("tachometerAbs: "); 	debugPort->println(data.tachometerAbs);
 	}
 }
+
+
+bool VescUart::getMotorConfiguration() {
+	
+	uint8_t command[1] = { COMM_GET_MCCONF }; // COMM_GET_VALUES or COMM_GET_UNITY_VALUE
+
+	uint8_t payload[512];
+
+	packSendPayload(command, 1);
+	// delay(1); //needed, otherwise data is not read
+
+	int lenPayload = receiveUartMessage(payload);
+
+	if (lenPayload > 50) {
+		unsigned char* message = (unsigned char*) payload;
+
+		COMM_PACKET_ID packetId;
+		int32_t ind = 0;
+
+		packetId = (COMM_PACKET_ID)message[0];
+		message++; // Removes the packetId from the actual message (payload)
+
+
+
+		
+		return confgenerator_deserialize_mcconf(message, &motorconfig);;
+	}
+	else
+	{
+		return false;
+	}
+}
+
+bool VescUart::setMotorConfiguration() {
+
+
+	int32_t index = 0;
+	uint8_t payload[512];
+
+	payload[0] = COMM_SET_MCCONF;
+
+
+	index = confgenerator_serialize_mcconf(payload + 1, &motorconfig);
+
+
+	packSendPayload(payload, index + 1);
+}
+

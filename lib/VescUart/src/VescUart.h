@@ -5,6 +5,7 @@
 #include "datatypes.h"
 #include "buffer.h"
 #include "crc.h"
+#include "confgenerator.h"
 
 class VescUart
 {
@@ -43,6 +44,8 @@ class VescUart
 
 		/** Variabel to hold nunchuck values */
 		nunchuckPackage nunchuck;
+
+		mc_configuration motorconfig;
 
 		/**
 		 * @brief      Set the serial port for uart communication
@@ -112,6 +115,20 @@ class VescUart
 		 */
 		void printVescValues(void);
 
+		/**
+		 * @brief      Get the motor configuration from VESC.
+		 */
+		bool getMotorConfiguration(void);
+
+		/**
+		 * @brief      Upload the motor configuration to VESC.
+		 */
+		bool setMotorConfiguration(void);
+
+		int32_t confgenerator_serialize_mcconf(uint8_t *buffer, const mc_configuration *conf);
+
+		bool confgenerator_deserialize_mcconf(const uint8_t *buffer, mc_configuration *conf);
+
 	private:
 
 		/** Variabel to hold the reference to the Serial object to use for UART */
@@ -166,6 +183,7 @@ class VescUart
 		 * @param      len   - Lenght of the array to print
 		 */
 		void serialPrint(uint8_t * data, int len);
+
 
 };
 

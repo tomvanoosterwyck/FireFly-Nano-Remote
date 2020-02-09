@@ -211,11 +211,12 @@ typedef enum {
 } foc_hfi_samples_type;
 
 typedef struct {
+	uint32_t mcconf_signature;
 	// Switching and drive
-	mc_pwm_mode pwm_mode;
-	mc_comm_mode comm_mode;
-	mc_motor_type motor_type;
-	mc_sensor_mode sensor_mode;
+	uint8_t pwm_mode;
+	uint8_t comm_mode;
+	uint8_t motor_type;
+	uint8_t sensor_mode;
 	// Limits
 	float l_current_max;
 	float l_current_min;
@@ -288,7 +289,7 @@ typedef struct {
 	float foc_sl_openloop_time;
 	float foc_sl_d_current_duty;
 	float foc_sl_d_current_factor;
-	mc_foc_sensor_mode foc_sensor_mode;
+	uint8_t foc_sensor_mode;
 	uint8_t foc_hall_table[8];
 	float foc_sl_erpm;
 	bool foc_sample_v0_v7;
@@ -297,15 +298,15 @@ typedef struct {
 	bool foc_temp_comp;
 	float foc_temp_comp_base_temp;
 	float foc_current_filter_const;
-	mc_foc_cc_decoupling_mode foc_cc_decoupling;
-	mc_foc_observer_type foc_observer_type;
+	uint8_t foc_cc_decoupling;
+	uint8_t foc_observer_type;
 	float foc_hfi_voltage_start;
 	float foc_hfi_voltage_run;
 	float foc_hfi_voltage_max;
 	float foc_sl_erpm_hfi;
 	uint16_t foc_hfi_start_samples;
 	float foc_hfi_obs_ovr_sec;
-	foc_hfi_samples_type foc_hfi_samples;
+	uint8_t foc_hfi_samples;
 	// GPDrive
 	int gpd_buffer_notify_left;
 	int gpd_buffer_interpol;
@@ -335,22 +336,22 @@ typedef struct {
 	float m_duty_ramp_step;
 	float m_current_backoff_gain;
 	uint32_t m_encoder_counts;
-	sensor_port_mode m_sensor_port_mode;
+	uint8_t m_sensor_port_mode;
 	bool m_invert_direction;
-	drv8301_oc_mode m_drv8301_oc_mode;
+	uint8_t m_drv8301_oc_mode;
 	int m_drv8301_oc_adj;
 	float m_bldc_f_sw_min;
 	float m_bldc_f_sw_max;
 	float m_dc_f_sw;
 	float m_ntc_motor_beta;
-	out_aux_mode m_out_aux_mode;
-	temp_sensor_type m_motor_temp_sens_type;
+	uint8_t m_out_aux_mode;
+	uint8_t m_motor_temp_sens_type;
 	float m_ptc_motor_coeff;
 	// Setup info
 	uint8_t si_motor_poles;
 	float si_gear_ratio;
 	float si_wheel_diameter;
-	BATTERY_TYPE si_battery_type;
+	uint8_t si_battery_type;
 	int si_battery_cells;
 	float si_battery_ah;
 } mc_configuration;
