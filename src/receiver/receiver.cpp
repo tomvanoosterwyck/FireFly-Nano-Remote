@@ -42,9 +42,6 @@ unsigned long statusCycleTime, previousStatusMillis, currentMillis, startCycleMi
 unsigned long lastDelay;
 
 // Initiate VescUart class for UART communication
-bldcMeasure dataPackage;
-mc_configuration motorConfigPackage;
-nunchuckPackage chuckPackage;
 
 void setup()
 {
@@ -71,7 +68,7 @@ void setup()
   motorCurrent.begin(SMOOTHED_AVERAGE, 2);
   motorCurrent.add(0);
 
-  //UART.setTimeout(UART_TIMEOUT); Might be necessary later on
+  UART.setTimeout(UART_TIMEOUT);
 
   #ifdef ARDUINO_SAMD_FEATHER_M0
 
@@ -85,12 +82,10 @@ void setup()
   #elif ESP32
 
     #ifndef FAKE_UART
-      //UART.setSerialPort(&MySerial); Old
-      SetSerialPort(&MySerial);
+      UART.setSerialPort(&MySerial);
       // Comment this line for debugging without VESC
       MySerial.begin(UART_SPEED, SERIAL_8N1, RX, TX);
     #endif
-
 
     initRadio();
 
@@ -908,20 +903,10 @@ void setThrottle(uint16_t value)
 
     // UART
     #ifndef FAKE_UART
-
-    /* Old
     UART.nunchuck.valueY = value;
     UART.nunchuck.upperButton = false;
     UART.nunchuck.lowerButton = false;
     UART.setNunchuckValues();
-    **/
-
-   chuckPackage.valYJoy = value;
-   chuckPackage.valUpperButton = false;
-   chuckPackage.valLowerButton = false;
-   VescUartSetNunchukValues(chuckPackage);
-
-
     #endif
     // PPM
     //    digitalWrite(throttlePin, HIGH);
@@ -936,17 +921,10 @@ void setCruise(uint8_t speed) {
 
     // UART
     #ifndef FAKE_UART
-    /* Old
     UART.nunchuck.valueY = 127;
     UART.nunchuck.upperButton = false;
     UART.nunchuck.lowerButton = true;
     UART.setNunchuckValues();
-    **/
-
-    chuckPackage.valYJoy = 127;
-    chuckPackage.valUpperButton = false;
-    chuckPackage.valLowerButton = true;
-    VescUartSetNunchukValues(chuckPackage);
     #endif
 }
 
@@ -1031,13 +1009,13 @@ void getUartData()
     #endif
 
     // Only get what we need
-    if ( VescUartGet(dataPackage) ) {
+    if ( UART.getVescValues(VESC_COMMAND) ) {
       // float dutyCycleNow;
       // float ampHours;
       // float ampHoursCharged;
 
       // smooth voltage readings
-      float voltage = dataPackage.inpVoltage;
+      float voltage = UART.data.inpVoltage;
       batterySensor.add(voltage);
 
       if (batteryPackPercentage(voltage) > 0) {
@@ -1046,14 +1024,14 @@ void getUartData()
         telemetry.setVoltage(voltage);
       }
 
-      telemetry.setSpeed(rpm2speed(dataPackage.rpm));
-      telemetry.setDistance(tach2dist(dataPackage.tachometerAbs));
-      telemetry.setMotorCurrent(dataPackage.avgMotorCurrent);
-      telemetry.setInputCurrent(dataPackage.avgInputCurrent);
+      telemetry.setSpeed(rpm2speed(UART.data.rpm));
+      telemetry.setDistance(tach2dist(UART.data.tachometerAbs));
+      telemetry.setMotorCurrent(UART.data.avgMotorCurrent);
+      telemetry.setInputCurrent(UART.data.avgInputCurrent);
 
       // temperature
-      telemetry.tempFET = round(dataPackage.tempFetFiltered);
-      telemetry.tempMotor = round(dataPackage.tempMotorFiltered);
+      telemetry.tempFET = round(UART.data.tempFET);
+      telemetry.tempMotor = round(UART.data.tempMotor);
       if (telemetry.tempMotor > 160) telemetry.tempMotor = 0; // no sensor
 
       // safety check

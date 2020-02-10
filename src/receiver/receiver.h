@@ -21,6 +21,8 @@
   // Wifi
 #endif
 
+VescUart UART;
+
 // Data structures
 ReceiverPacket recvPacket;
 RemotePacket remPacket;
