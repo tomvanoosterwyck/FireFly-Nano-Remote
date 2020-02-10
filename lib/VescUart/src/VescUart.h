@@ -2,10 +2,11 @@
 #define _VESCUART_h
 
 #include <Arduino.h>
+#include "confgenerator.h"
 #include "datatypes.h"
 #include "buffer.h"
 #include "crc.h"
-#include "confgenerator.h"
+
 
 class VescUart
 {
@@ -125,9 +126,9 @@ class VescUart
 		 */
 		bool setMotorConfiguration(void);
 
-		int32_t confgenerator_serialize_mcconf(uint8_t *buffer, const mc_configuration *conf);
+		//int32_t confgenerator_serialize_mcconf(uint8_t *buffer);
 
-		bool confgenerator_deserialize_mcconf(const uint8_t *buffer, mc_configuration *conf);
+		//bool confgenerator_deserialize_mcconf(const uint8_t *buffer, mc_configuration *conf);
 
 	private:
 

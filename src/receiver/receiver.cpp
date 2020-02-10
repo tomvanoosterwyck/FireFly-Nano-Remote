@@ -41,6 +41,9 @@ unsigned long statusCycleTime, previousStatusMillis, currentMillis, startCycleMi
 
 unsigned long lastDelay;
 
+Preferences preferences;
+
+
 // Initiate VescUart class for UART communication
 
 void setup()
@@ -70,6 +73,7 @@ void setup()
 
   UART.setTimeout(UART_TIMEOUT);
 
+
   #ifdef ARDUINO_SAMD_FEATHER_M0
 
     #ifndef FAKE_UART
@@ -89,6 +93,11 @@ void setup()
 
     initRadio();
 
+
+    
+    
+    
+
     xTaskCreatePinnedToCore(
           coreTask,   /* Function to implement the task */
           "coreTask", /* Name of the task */
@@ -104,6 +113,7 @@ void setup()
 
   pinMode(Vext, OUTPUT);
   digitalWrite(Vext, LOW);
+
 
   #ifdef RECEIVER_SCREEN
     display.begin(SSD1306_SWITCHCAPVCC, 0x3C);
@@ -390,6 +400,8 @@ void loop() { // core 1
     String taskMessage = "radio task running on core ";
     taskMessage = taskMessage + xPortGetCoreID();
     Serial.println(taskMessage);
+
+    
 
     while (true) {
       radioExchange();
@@ -1023,6 +1035,16 @@ void getUartData()
       } else { // ESC is off!
         telemetry.setVoltage(voltage);
       }
+
+      //UART.getMotorConfiguration();
+      //telemetry.setVoltage(UART.motorconfig.l_current_max);
+      //UART.motorconfig.l_current_max = 41.1;
+      //UART.motorconfig.l_current_min = 1.3;
+      //UART.motorconfig.l_in_current_max = 30.3;
+      //UART.motorconfig.l_in_current_min = 2.2;
+      //UART.setMotorConfiguration();
+
+      
 
       telemetry.setSpeed(rpm2speed(UART.data.rpm));
       telemetry.setDistance(tach2dist(UART.data.tachometerAbs));
