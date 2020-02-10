@@ -18,10 +18,6 @@
   #include <Fonts/FreeSans9pt7b.h>
   #include <Fonts/FreeSans12pt7b.h>
 
-  #include <nvs.h>
-  #include <nvs_flash.h>
-  #include <Preferences.h>
-
   // Wifi
 #endif
 
