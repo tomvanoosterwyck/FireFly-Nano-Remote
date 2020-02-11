@@ -706,6 +706,7 @@ bool receiveData() {
   // receive a packet and check crc
   if (!receivePacket(buf, len)) return false;
 
+
   // parse header
   memcpy(&recvPacket, buf, sizeof(recvPacket));
   if (recvPacket.chain != remPacket.counter) {
@@ -740,6 +741,30 @@ bool receiveData() {
 
       // check chain and CRC
       debug("ConfigPacket: max speed " + String(boardConfig.maxSpeed));
+      
+
+      
+      MENUS[MENU_PROFILE][1] = "CRAP";
+
+      // Working! 
+      uint32_t it;
+      it = boardConfig.nameProfile1;
+      char test[4];
+      SerializeInt32(test, it);
+      MENUS[MENU_PROFILE][1] = String(test);
+      
+
+      
+
+      
+      
+
+
+      //MENUS[MENU_PROFILE][2] = (String) (char*) (uint8_t*)boardConfig.nameProfile2; 
+      //MENUS[MENU_PROFILE][3] = (String) (char*) (uint8_t*)boardConfig.nameProfile3; 
+      //MENUS[MENU_PROFILE][4] = (String) (char*) (uint8_t*)boardConfig.nameProfile4; 
+      //MENUS[MENU_PROFILE][5] = boardConfig.nameProfile5; 
+      //debug(String(boardConfig.nameProfile1));
 
       needConfig = false;
       return true;
@@ -846,6 +871,7 @@ void prepatePacket() {
     remPacket.command = SET_THROTTLE;
     remPacket.data = round(throttle);
     break;
+    
 
   case MENU:
     if (requestUpdate) {
@@ -913,6 +939,7 @@ void transmitToReceiver() {
       default: // connected
         debug("Disconnected");
         state = CONNECTING;
+        //needConfig = true;
         vibrate(100);
     }
   }
@@ -2082,4 +2109,13 @@ void debug(String x) {
   if (settings.debugMode) {
     Serial.println(x);
   }
+}
+
+void SerializeInt32(char (&buf)[4], int32_t val)
+{
+    uint32_t uval = val;
+    buf[0] = uval;
+    buf[1] = uval >> 8;
+    buf[2] = uval >> 16;
+    buf[3] = uval >> 24;
 }

@@ -88,7 +88,7 @@ void setup()
       //UART.setSerialPort(&MySerial); Old
       SetSerialPort(&MySerial);
       // Comment this line for debugging without VESC
-      MySerial.begin(UART_SPEED, SERIAL_8N1, RX, TX);
+      //MySerial.begin(UART_SPEED, SERIAL_8N1, RX, TX);
     #endif
 
 
@@ -114,7 +114,40 @@ void setup()
     display.begin(SSD1306_SWITCHCAPVCC, 0x3C);
     display.powerOn();
   #endif
+
+
+  // Working!
+  char buffer[4] = "Tes";
+  int32_t t;
+
+  t = ParseInt32(buffer);
+
+  boardConfig.nameProfile1 = t;
+  
+
+  //boardConfig.nameProfile2 = (uint8_t) (char) "Test2\0";
+  //boardConfig.nameProfile3 = (uint8_t) (char) "Test3\0";
+  //boardConfig.nameProfile4 = (uint8_t) (char) "Test4\0";
+  //boardConfig.nameProfile5 = "Test5";
 }
+
+void SerializeInt32(char (&buf)[4], int32_t val)
+{
+    uint32_t uval = val;
+    buf[0] = uval;
+    buf[1] = uval >> 8;
+    buf[2] = uval >> 16;
+    buf[3] = uval >> 24;
+}
+
+int32_t ParseInt32(const char (&buf)[4])
+{
+    // This prevents buf[i] from being promoted to a signed int.
+    uint32_t u0 = buf[0], u1 = buf[1], u2 = buf[2], u3 = buf[3];
+    uint32_t uval = u0 | (u1 << 8) | (u2 << 16) | (u3 << 24);
+    return uval;
+}
+
 
 bool isTelemetryLost() {
   return telemetryTime !=0 // telemetry was active
@@ -503,6 +536,7 @@ bool sendPacket(const void * packet, uint8_t len) {
     LoRa.beginPacket(len);
     int t = LoRa.write(buf, len);
     LoRa.endPacket();
+    
 
     sent = t == len;
     // LoRa.receive(sizeof(remPacket) + CRC_SIZE);
@@ -1108,6 +1142,13 @@ void setDefaultEEPROMSettings()
   boardConfig.wheelDiameter = WHEEL_DIAMETER;
   boardConfig.wheelPulley = WHEEL_PULLEY;
   boardConfig.motorPulley = MOTOR_PULLEY;
+  /*boardConfig.nameProfile1 = "Test1";
+  boardConfig.nameProfile2 = "Test2";
+  boardConfig.nameProfile3 = "Test3";
+  boardConfig.nameProfile4 = "Test4";
+  boardConfig.nameProfile5 = "Test5";
+**/
+
 
   updateEEPROMSettings();
 }

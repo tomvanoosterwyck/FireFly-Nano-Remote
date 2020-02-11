@@ -127,6 +127,8 @@ struct InfoPacket {
   uint16_t r3;
   uint16_t r4;
   // --------------
+  uint16_t r5;
+  uint16_t r6;
 };
 
 const int PACKET_SIZE = sizeof(InfoPacket);
@@ -146,6 +148,8 @@ struct TelemetryPacket {
   int16_t motorCurrent; // motor amps * 100
   int16_t inputCurrent; // battery amps * 100
   // -----------------
+  int16_t r9;
+  int16_t r10;
 
   uint16_t f2w(float f) { return f * 100; } // pack float
   float w2f(uint16_t w) { return float(w) / 100; }; // unpack float
@@ -186,6 +190,11 @@ struct ConfigPacket {
   int16_t r1;  // battery amps * 100
   int16_t r2;
   // -------------------
+  uint32_t nameProfile1;
+  //uint8_t nameProfile2;
+  //uint8_t nameProfile3;
+  //uint8_t nameProfile4;
+
   float getMaxSpeed() { return (maxSpeed) / 100; }
   void setMaxSpeed(float f) { maxSpeed = f * 100; }
 };

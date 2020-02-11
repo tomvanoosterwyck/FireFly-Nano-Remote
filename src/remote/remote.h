@@ -316,3 +316,5 @@ void saveBoard(int board, uint32_t address);
 void deleteBoard(int board);
 void selectBoard(int board);
 void debug(String x);
+
+void SerializeInt32(char (&buf)[4], int32_t val);

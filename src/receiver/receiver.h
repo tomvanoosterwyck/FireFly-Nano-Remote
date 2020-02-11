@@ -117,3 +117,9 @@ void updateEEPROMSettings();
 void updateSetting(uint8_t setting, uint64_t value);
 
 void debug(String x);
+
+
+
+void SerializeInt32(char (&buf)[4], int32_t val);
+
+int32_t ParseInt32(const char (&buf)[4]);
