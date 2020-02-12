@@ -4,12 +4,12 @@
 #include <Arduino.h>
 #include <datatypes.h>
 
-#define FAKE_UART // Comment out after pairing the remote and connecting VESC
+//#define FAKE_UART // Comment out after pairing the remote and connecting VESC
 
 #define DEBUG // Uncomment DEBUG if you need to debug the remote
 
 const COMM_PACKET_ID VESC_COMMAND = COMM_GET_VALUES; // VESC
-// const COMM_PACKET_ID VESC_COMMAND = COMM_GET_UNITY_VALUES; // Enertion Unity
+// const COMM_PACKET_ID VESC_COMMAND = COMM_GET_UNITY_VALUES; // Enertion Unity // Disabled for now
 
 /*
   Endless ride - when remote is off and speed is over 12 km/h for 3 seconds,
@@ -31,7 +31,7 @@ const float CRUISE_CURRENT_LOW = 5.0;   // Amps
 const float MAX_PUSHING_SPEED = 20.0;   // km/h
 
 // Auto stop (in seconds)
-const float AUTO_BRAKE_TIME = 5.0;    // time to apply the full brakes
+const float AUTO_BRAKE_TIME = 10.0;    // time to apply the full brakes
 const int AUTO_BRAKE_RELEASE = 5;     // time to release brakes after the full stop
 
 // UART
@@ -40,27 +40,27 @@ const uint16_t uartPullInterval = 150;
 const int UART_TIMEOUT = 10; // 10ms for 115200 bauds, 100ms for 9600 bauds
 const int REMOTE_RX_TIMEOUT = 20; // ms
 
-const int REMOTE_LOCK_TIMEOUT = 10; // seconds to lock throttle when idle
+const int REMOTE_LOCK_TIMEOUT = 5; // seconds to lock throttle when idle
 const int REMOTE_SLEEP_TIMEOUT = 180; // seconds to go to sleep mode
 
 // turn off display if battery < 15%
-const int DISPLAY_BATTERY_MIN = 15;
+const int DISPLAY_BATTERY_MIN = 0;
 
 // VESC current, for graphs only
-const int MOTOR_MIN = -30;
-const int MOTOR_MAX = 30;
-const int BATTERY_MIN = -30;
-const int BATTERY_MAX = 30;
+const int MOTOR_MIN = -50;
+const int MOTOR_MAX = 55;
+const int BATTERY_MIN = -50;
+const int BATTERY_MAX = 55;
 
 // default board configuration
-const int MAX_SPEED = 30;       // KM/H
-const int MAX_RANGE = 30;       // KM
+const int MAX_SPEED = 38;       // KM/H
+const int MAX_RANGE = 45;       // KM
 const int BATTERY_CELLS = 10;
-const int BATTERY_TYPE = 0;     // 0: LI-ION | 1: LIPO
-const int MOTOR_POLES = 22;
+const int BOARD_BATTERY_TYPE = 0;     // 0: LI-ION | 1: LIPO
+const int MOTOR_POLES = 14;
 const int WHEEL_DIAMETER = 90;
-const int WHEEL_PULLEY = 1;
-const int MOTOR_PULLEY = 1;
+const int WHEEL_PULLEY = 36;
+const int MOTOR_PULLEY = 15;
 
 #define VERSION 2
 
@@ -96,6 +96,7 @@ enum AppState {
   STOPPING,   // emergency brake when remote has disconnected
   STOPPED,
   PAIRING,
+  BOARDS_MENU,
   UPDATE,     // update over WiFi
   COASTING    // waiting for board to slowdown
 };
@@ -126,6 +127,8 @@ struct InfoPacket {
   uint16_t r3;
   uint16_t r4;
   // --------------
+  uint16_t r5;
+  uint16_t r6;
 };
 
 const int PACKET_SIZE = sizeof(InfoPacket);
@@ -145,6 +148,8 @@ struct TelemetryPacket {
   int16_t motorCurrent; // motor amps * 100
   int16_t inputCurrent; // battery amps * 100
   // -----------------
+  int16_t r9;
+  int16_t r10;
 
   uint16_t f2w(float f) { return f * 100; } // pack float
   float w2f(uint16_t w) { return float(w) / 100; }; // unpack float
@@ -185,16 +190,15 @@ struct ConfigPacket {
   int16_t r1;  // battery amps * 100
   int16_t r2;
   // -------------------
+  uint32_t nameProfile1;
+  //uint8_t nameProfile2;
+  //uint8_t nameProfile3;
+  //uint8_t nameProfile4;
+
   float getMaxSpeed() { return (maxSpeed) / 100; }
   void setMaxSpeed(float f) { maxSpeed = f * 100; }
 };
 
 const int default_throttle = 127;
-
-#ifdef DEBUG
-  #define debug(x) Serial.println (x)
-#else
-  #define debug(x)
-#endif
 
 #endif

@@ -71,28 +71,29 @@ void setup() {
 
   startupTime = millis();
 
-  #ifdef DEBUG
-    Serial.begin(115200);
-  #endif
-
   // while (!Serial) { ; }
 
   loadSettings();
 
-  #ifdef PIN_VIBRO
-    pinMode(PIN_VIBRO, OUTPUT);
-    digitalWrite(PIN_VIBRO, LOW);
-  #endif
-  #ifdef PIN_BATTERY
-    pinMode(PIN_BATTERY, INPUT);
-    #ifdef ESP32
-      // enable battery probe
-      pinMode(Vext, OUTPUT);
-      digitalWrite(Vext, LOW);
-      adcAttachPin(PIN_BATTERY);
-      // analogSetClockDiv(255);
-    #endif
-  #endif
+  if (settings.debugMode)
+  {
+    Serial.begin(115200);
+  }
+
+#ifdef PIN_VIBRO
+  pinMode(PIN_VIBRO, OUTPUT);
+  digitalWrite(PIN_VIBRO, LOW);
+#endif
+#ifdef PIN_BATTERY
+  pinMode(PIN_BATTERY, INPUT);
+#ifdef ESP32
+  // enable battery probe
+  pinMode(Vext, OUTPUT);
+  digitalWrite(Vext, LOW);
+  adcAttachPin(PIN_BATTERY);
+  // analogSetClockDiv(255);
+#endif
+#endif
 
   pinMode(PIN_TRIGGER, INPUT_PULLUP);
   pinMode(PIN_BUTTON, INPUT_PULLUP);
@@ -232,6 +233,7 @@ void calculateThrottle() {
       if (secondsSince(stopTime) > REMOTE_LOCK_TIMEOUT) {
         // lock remote
         state = IDLE;
+        page = PAGE_MAIN;
         debug("locked");
       }
     }
@@ -287,11 +289,25 @@ void handleButtons() {
 
     switch (state) {
       case CONNECTING:
-        state = PAIRING; // switch to pairing
+        state = BOARDS_MENU; // switch to boardsmenu
         break;
 
       case PAIRING:
-        state = CONNECTING; // switch to connecting
+        state = BOARDS_MENU; // switch to boards menu
+        loadBoards();
+        break;
+
+      case BOARDS_MENU:
+        switch(menuPage){
+          case MENU_MAIN:
+            state = CONNECTING;
+            stateSwitch = millis();
+            break;
+          case MENU_SUB:
+            backToMainMenu();
+            break;
+        }
+        
         break;
 
       default:
@@ -340,7 +356,11 @@ void sleep()
     radio.sleep();
 
 
-    USBDevice.standby();
+    #ifdef DEBUG
+      Serial.end();
+    #endif
+
+    //USBDevice.standby();
 
     delay(200);
 
@@ -416,7 +436,11 @@ void sleep()
 
   #ifdef ARDUINO_SAMD_ZERO
     SCB->SCR &= ~SCB_SCR_SLEEPDEEP_Msk;
-    USBDevice.attach();
+    #ifdef DEBUG
+      Serial.begin(115200);
+    #endif
+    
+     //USBDevice.attach();
   #endif
 
   digitalWrite(LED, HIGH);
@@ -468,6 +492,58 @@ void waitRelease(int button) {
   }
 }
 
+void loadBoards() {
+  preferences.begin("FireFlyNano", false);
+  int i = 0;
+  bool b = false;
+  bool boardAvailable = false;
+  while(b == false){
+    boards[i] = preferences.getLong(conversionChart[i], 0);
+
+    if (boards[i] != 0){ boardAvailable = true; }
+
+    i++;
+    if (i == 19){
+      b = true;
+    }
+  }
+
+  currentBoard = preferences.getInt("CURRENT_BOARD", 0);
+  preferences.end();
+
+  if (boardAvailable == false){
+    state = PAIRING;
+    selectBoard(0);
+  }
+}
+
+void saveBoard(int board, uint32_t address) {
+  boards[board] = address;
+  preferences.begin("FireFlyNano", false);
+  preferences.putLong(conversionChart[board], address);
+  preferences.end();
+  selectBoard(board);
+}
+
+void deleteBoard(int board) {
+  if (settings.boardID == boards[board]) {
+    settings.boardID = 0;
+  }
+  boards[board] = 0;
+  preferences.begin("FireFlyNano", false);
+  preferences.putLong(conversionChart[board], 0);
+  preferences.end();
+  loadBoards();
+}
+
+void selectBoard(int board) {
+  settings.boardID = boards[board];
+  currentBoard = board;
+  preferences.begin("FireFlyNano", false);
+  preferences.putInt("CURRENT_BOARD", board);
+  preferences.end();
+}
+
 void loadSettings() {
 
   #ifdef ESP32
@@ -481,11 +557,14 @@ void loadSettings() {
     // }
 
     preferences.begin("FireFlyNano", false);
+    settings.debugMode = preferences.getBool("DEBUG", false);
     settings.minHallValue = preferences.getShort("MIN_HALL",  MIN_HALL);
     settings.centerHallValue = preferences.getShort("CENTER_HALL", CENTER_HALL);
     settings.maxHallValue = preferences.getShort("MAX_HALL", MAX_HALL);
-    settings.boardID = preferences.getLong("BOARD_ID", 0);
     preferences.end();
+
+    loadBoards();
+    selectBoard(currentBoard);
 
   #elif ARDUINO_SAMD_ZERO
 
@@ -503,8 +582,6 @@ void loadSettings() {
   remPacket.version = VERSION;
 
   debug("board id: "+ String(settings.boardID));
-
-  if (settings.boardID == 0) { state = PAIRING; }
 }
 
 // only after chamge
@@ -514,11 +591,13 @@ void saveSettings() {
   #ifdef ESP32
 
     preferences.begin("FireFlyNano", false);
+    preferences.putBool("DEBUG", settings.debugMode);
     preferences.putShort("MIN_HALL",  settings.minHallValue);
     preferences.putShort("CENTER_HALL", settings.centerHallValue);
     preferences.putShort("MAX_HALL", settings.maxHallValue);
-    preferences.putLong("BOARD_ID", settings.boardID);
     preferences.end();
+
+    settings.needSave = false;
 
   #elif ARDUINO_SAMD_ZERO
 
@@ -605,23 +684,16 @@ bool sendData() {
   //       + ", counter: " + String(remPacket.counter)
   //    );
 
-  #ifdef ESP32
+  LoRa.beginPacket(sz);
+  int t = 0;
+  t = LoRa.write(buf, sz);
+  LoRa.endPacket();
 
-    LoRa.beginPacket(sz);
-    int t = 0;
-    t = LoRa.write(buf, sz);
-    LoRa.endPacket();
+  // LoRa.receive(PACKET_SIZE + CRC_SIZE);
 
-    // LoRa.receive(PACKET_SIZE + CRC_SIZE);
+  sent = t == sz;
 
-    sent = t == sz;
 
-  #elif ARDUINO_SAMD_ZERO
-
-    sent = radio.send(buf, sz);
-    if (sent) radio.waitPacketSent();
-
-  #endif
 
   return sent;
 }
@@ -633,6 +705,7 @@ bool receiveData() {
 
   // receive a packet and check crc
   if (!receivePacket(buf, len)) return false;
+
 
   // parse header
   memcpy(&recvPacket, buf, sizeof(recvPacket));
@@ -668,6 +741,30 @@ bool receiveData() {
 
       // check chain and CRC
       debug("ConfigPacket: max speed " + String(boardConfig.maxSpeed));
+      
+
+      
+      MENUS[MENU_PROFILE][1] = "CRAP";
+
+      // Working! 
+      uint32_t it;
+      it = boardConfig.nameProfile1;
+      char test[4];
+      SerializeInt32(test, it);
+      MENUS[MENU_PROFILE][1] = String(test);
+      
+
+      
+
+      
+      
+
+
+      //MENUS[MENU_PROFILE][2] = (String) (char*) (uint8_t*)boardConfig.nameProfile2; 
+      //MENUS[MENU_PROFILE][3] = (String) (char*) (uint8_t*)boardConfig.nameProfile3; 
+      //MENUS[MENU_PROFILE][4] = (String) (char*) (uint8_t*)boardConfig.nameProfile4; 
+      //MENUS[MENU_PROFILE][5] = boardConfig.nameProfile5; 
+      //debug(String(boardConfig.nameProfile1));
 
       needConfig = false;
       return true;
@@ -679,8 +776,7 @@ bool receiveData() {
       debug("InfoPacket: board ID " + String(boardInfo.id));
 
       // add to list
-      settings.boardID = boardInfo.id;
-      saveSettings();
+      saveBoard(selectedBoardSlot, boardInfo.id);
 
       // pairing done
       state = NORMAL;
@@ -775,6 +871,7 @@ void prepatePacket() {
     remPacket.command = SET_THROTTLE;
     remPacket.data = round(throttle);
     break;
+    
 
   case MENU:
     if (requestUpdate) {
@@ -835,11 +932,14 @@ void transmitToReceiver() {
   // If lost more than 10 transmissions, we can assume that connection is lost.
   if (failCount > 10) {
     switch (state) {
-      case PAIRING: break; // keep pairing mode
+      case PAIRING: 
+      case BOARDS_MENU:
+        break; // keep pairing mode
       case CONNECTING: break;
       default: // connected
         debug("Disconnected");
         state = CONNECTING;
+        //needConfig = true;
         vibrate(100);
     }
   }
@@ -933,7 +1033,7 @@ float batteryLevelVolts() {
     #elif ESP32
       double reading = (double)total / (double)samples;
       voltage = -0.000000000000016 * pow(reading,4) + 0.000000000118171 * pow(reading,3)- 0.000000301211691 * pow(reading,2)+ 0.001109019271794 * reading + 0.034143524634089;
-      voltage = voltage * 2.64;
+      voltage = voltage * 2.64 * 4.2 / 4.71;
     #endif
 
     // don't smooth at startup
@@ -1008,13 +1108,30 @@ void updateMainDisplay()
   else switch (state) {
 
     case CONNECTING:
-      drawConnectingScreen();
-      drawThrottle();
+      if (secondsSince(startupTime) > 1) {
+        if (millisSince(stateSwitch) > 50)
+        {
+          drawConnectingScreen();
+          drawThrottle();
+        }
+        else
+        {
+          drawBoardsMenu();
+        }
+      } else {
+        drawConnectingScreen();
+        drawThrottle();
+      }
+
+        
       break;
 
     case PAIRING:
       drawPairingScreen();
-      drawThrottle();
+      break;
+
+    case BOARDS_MENU:
+      drawBoardsMenu();
       break;
 
     default: // connected
@@ -1074,6 +1191,13 @@ void drawPairingScreen() {
   y += 14;
   drawString((triggerActive() ? "T " : "0 ") + String(hallValue) + " " + String(throttle, 0), -1, y, fontMicro);
 
+  int level = batteryLevel;
+
+  if (level > 20 || signalBlink)
+  { // blink
+    y += 12;
+    drawString(String(level) + "% " + String(batteryLevelVolts(), 2) + "v", -1, y, fontMicro);
+  }
 }
 
 void drawConnectingScreen() {
@@ -1174,10 +1298,11 @@ void calibrateScreen() {
       settings.minHallValue = tempSettings.minHallValue;
       settings.maxHallValue = tempSettings.maxHallValue;
 
+      settings.needSave = true;
+
       backToMainMenu();
       display.setRotation(DISPLAY_ROTATION);
-      saveSettings();
-
+      waitRelease(PIN_TRIGGER);
       return;
     }
   }
@@ -1223,6 +1348,164 @@ void calibrateScreen() {
 void backToMainMenu() {
   menuPage = MENU_MAIN;
   currentMenu = 0;
+  if (settings.needSave) {
+    saveSettings();
+  }
+}
+
+void drawBoardsMenu() {
+  
+  //  display.drawFrame(0,0,64,128);
+  int y = 10;
+
+  // wheel = up/down
+  int position = readThrottlePosition();
+
+  switch (menuPage) {
+
+  case MENU_MAIN:
+
+    if (position < default_throttle - 30) {
+      if (currentMenu < mainBoardMenus - 1) currentMenu += 0.25;//0.25;
+    }
+    if (position > default_throttle + 30) {
+      if (currentMenu > 0) currentMenu -= 0.25; //0.25;
+    }
+
+    drawString("- Boards -", -1, y, fontDesc);
+
+    y += 20;
+    
+    if (round(currentMenu) < startMenu) {
+      startMenu = round(currentMenu);
+      lowestMenu = startMenu;
+    } else if (round(currentMenu) >= 5) {
+      if (round(currentMenu) > lowestMenu){
+        startMenu = round(currentMenu) - 5;
+      }
+        
+    } 
+
+    if (round(currentMenu) >= lowestMenu) {
+      lowestMenu = round(currentMenu); 
+    }
+
+    for (int i = startMenu; i < startMenu + 6; i++) {
+      if (boards[i] == 0){
+        String text = String("Pair ");
+        text.concat(i + 1);
+        drawString(text, -1, y, fontDesc);
+      }else{
+        drawString(BOARDMENUS[i], -1, y, fontDesc);
+      }
+      
+      // draw cursor
+      if (i == round(currentMenu)) drawFrame(0, y-10, 64, 14);
+      y += 16;
+    }
+
+    if (pressed(PIN_TRIGGER)) {
+      menuPage = MENU_SUB;
+      subMenu = round(currentMenu);
+      currentMenu = 0;
+      waitRelease(PIN_TRIGGER);
+    }
+    break;
+
+  case MENU_SUB:
+    // header
+    if (boards[subMenu] == 0) {
+      selectedBoardSlot = subMenu;
+      state = PAIRING;
+      backToMainMenu();
+      return;
+    }
+    
+
+    drawString("- " + BOARDMENUS[subMenu] + " -", -1, y, fontDesc);
+
+      // todo: wheel control
+    if (position < default_throttle - 30) {
+      if (currentMenu < 1) currentMenu += 0.25;//0.25;
+    }
+    if (position > default_throttle + 30) {
+      if (currentMenu > 0) currentMenu -= 0.25; //0.25;
+    }
+
+    y += 20;
+
+    if (round(currentMenu) < startMenu) {
+      startMenu = round(currentMenu);
+      lowestMenu = startMenu;
+    } else if (round(currentMenu) >= 5) {
+      if (round(currentMenu) > lowestMenu){
+        startMenu = round(currentMenu) - 5;
+      }
+        
+    } 
+
+    if (round(currentMenu) >= lowestMenu) {
+      lowestMenu = round(currentMenu); 
+    }
+
+
+    for (int i = startMenu; i < startMenu + 6; i++) {
+      switch(i) {
+        case BOARDS_SELECT:
+          if (currentBoard == subMenu){
+            if (secondsSince(alreadySelectedMillis) > 1){
+              drawString("Selected", -1, y, fontDesc);
+            } else {
+              drawString("Already", -1, y, fontDesc);
+            }
+            
+          } else {
+            drawString("Select", -1, y, fontDesc);
+          }
+          break;
+        case BOARDS_DELETE:
+          drawString("Delete", -1, y, fontDesc);
+          break;
+        case 4:
+          drawString("Address:", -1, y, fontDesc);
+          break;
+        case 5:
+          drawString(String(boards[subMenu], HEX), -1, y, fontDesc);
+          break;
+          
+      }
+      
+      // draw cursor
+      if (i == round(currentMenu)) drawFrame(0, y-10, 64, 14);
+      y += 16;
+    }
+
+    if (pressed(PIN_TRIGGER)) {
+      menuPage = MENU_ITEM;
+      subMenuItem = round(currentMenu);
+      waitRelease(PIN_TRIGGER);
+
+      // handle commands
+      switch (subMenuItem) {
+        case BOARDS_SELECT: 
+          if (currentBoard == subMenu){
+            alreadySelectedMillis = millis();
+          } else {
+            selectBoard(subMenu);
+          }
+          menuPage = MENU_SUB;
+          waitRelease(PIN_TRIGGER);
+          break;
+        case BOARDS_DELETE:
+          deleteBoard(subMenu);
+          backToMainMenu();
+          break;
+      }
+    }
+    break;
+
+  }
+
 }
 
 void drawSettingsMenu() {
@@ -1246,22 +1529,40 @@ void drawSettingsMenu() {
   // wheel = up/down
   int position = readThrottlePosition();
 
-  // todo: wheel control
-  if (position < default_throttle - 30) {
-    if (currentMenu < subMenus-1) currentMenu += 0.25;
-  }
-  if (position > default_throttle + 30) {
-    if (currentMenu > 0) currentMenu -= 0.25;
-  }
+
 
   switch (menuPage) {
 
   case MENU_MAIN:
 
+    if (position < default_throttle - 30) {
+      if (currentMenu < mainMenus - 1) currentMenu += 0.25;//0.25;
+    }
+    if (position > default_throttle + 30) {
+      if (currentMenu > 0) currentMenu -= 0.25; //0.25;
+    }
+
     drawString("- Menu -", -1, y, fontDesc);
 
     y += 20;
-    for (int i = 0; i < mainMenus; i++) {
+
+    
+    
+    if (round(currentMenu) < startMenu) {
+      startMenu = round(currentMenu);
+      lowestMenu = startMenu;
+    } else if (round(currentMenu) >= 5) {
+      if (round(currentMenu) > lowestMenu){
+        startMenu = round(currentMenu) - 5;
+      }
+        
+    } 
+
+    if (round(currentMenu) >= lowestMenu) {
+      lowestMenu = round(currentMenu); 
+    }
+
+    for (int i = startMenu; i < startMenu + 6; i++) {
       drawString(MENUS[i][0], -1, y, fontDesc);
       // draw cursor
       if (i == round(currentMenu)) drawFrame(0, y-10, 64, 14);
@@ -1279,8 +1580,33 @@ void drawSettingsMenu() {
   case MENU_SUB:
     // header
     drawString("- " + MENUS[subMenu][0] + " -", -1, y, fontDesc);
+
+      // todo: wheel control
+    if (position < default_throttle - 30) {
+      if (currentMenu < subMenusCount[subMenu] - 1) currentMenu += 0.25;//0.25;
+    }
+    if (position > default_throttle + 30) {
+      if (currentMenu > 0) currentMenu -= 0.25; //0.25;
+    }
+
     y += 20;
-    for (int i = 0; i < subMenus-1; i++) {
+
+    if (round(currentMenu) < startMenu) {
+      startMenu = round(currentMenu);
+      lowestMenu = startMenu;
+    }else if (round(currentMenu) >= 5) {
+      if (round(currentMenu) > lowestMenu){
+        startMenu = round(currentMenu) - 5;
+      }
+        
+    } 
+
+    if (round(currentMenu) >= lowestMenu) {
+      lowestMenu = round(currentMenu); 
+    }
+
+
+    for (int i = startMenu; i < startMenu + 6; i++) {
       drawString(MENUS[subMenu][i+1], -1, y, fontDesc);
       // draw cursor
       if (i == round(currentMenu)) drawFrame(0, y-10, 64, 14);
@@ -1297,9 +1623,13 @@ void drawSettingsMenu() {
         case MENU_INFO: break;
         case MENU_REMOTE:
           switch (subMenuItem) {
-            case REMOTE_PAIR:
-              state = PAIRING;
-              backToMainMenu(); // exit menu
+            case REMOTE_DISCONNECT:
+              state = CONNECTING;
+              page = PAGE_MAIN;
+              selectBoard(20);
+              backToMainMenu();
+              break;
+            default:
               break;
           }
           break;
@@ -1350,18 +1680,27 @@ void drawDebugPage() {
 
   //  display.drawFrame(0,0,64,128);
 
-  int y = 10;
-  drawString(String(settings.boardID, HEX), -1, y, fontDesc);
+  if (pressed(PIN_TRIGGER))
+  {
+    settings.debugMode = !settings.debugMode;
+    settings.needSave = true;
+    waitRelease(PIN_TRIGGER);
+  }
 
-  y = 35;
-  drawStringCenter(String(lastDelay), " ms", y);
+    int y = 10;
+    drawString(String(settings.boardID, HEX), -1, y, fontDesc);
 
-  y += 25;
-  drawStringCenter(String(lastRssi, 0), " db", y);
+    y = 35;
+    drawStringCenter(String(lastDelay), " ms", y);
 
-  y += 25;
-  drawStringCenter(String(readThrottlePosition()), String(hallValue), y);
+    y += 25;
+    drawStringCenter(String(lastRssi, 0), " db", y);
 
+    y += 25;
+    drawStringCenter(String(readThrottlePosition()), String(hallValue), y);
+
+    y += 25;
+    drawStringCenter(settings.debugMode ? "On" : "Off", " ", y);
 }
 
 int getStringWidth(String s) {
@@ -1764,4 +2103,19 @@ void vibrate(int ms) {
     delay(ms);
     digitalWrite(PIN_VIBRO, LOW);
   #endif
+}
+
+void debug(String x) {
+  if (settings.debugMode) {
+    Serial.println(x);
+  }
+}
+
+void SerializeInt32(char (&buf)[4], int32_t val)
+{
+    uint32_t uval = val;
+    buf[0] = uval;
+    buf[1] = uval >> 8;
+    buf[2] = uval >> 16;
+    buf[3] = uval >> 24;
 }

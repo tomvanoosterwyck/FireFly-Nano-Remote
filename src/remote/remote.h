@@ -42,6 +42,8 @@
 
 struct RemoteSettings {
   bool valid;
+  bool needSave = false;
+  bool debugMode = false;
   short minHallValue = MIN_HALL;
   short centerHallValue = CENTER_HALL;
   short maxHallValue = MAX_HALL;
@@ -103,6 +105,8 @@ byte hallCenterMargin = 0;
 AppState state = CONNECTING;
 AppState receiverState;
 
+unsigned long stateSwitch = 0;
+
 // OLED display
 unsigned long lastSignalBlink;
 bool signalBlink = false;
@@ -142,22 +146,48 @@ enum menu_page {
 } menuPage = MENU_MAIN;
 
 
-const byte subMenus = 7;
-const byte mainMenus = 3;
+// Boardmenu
+int currentBoard = 0;
+unsigned long alreadySelectedMillis = 0;
+
+const byte mainBoardMenus = 20;
+
+String BOARDMENUS[mainBoardMenus] = {"Board 1", "Board 2", "Board 3", "Board 4", "Board 5", "Board 6", "Board 7", "Board 8", "Board 9", "Board 10", "Board 11", "Board 12", "Board 13", "Board 14", "Board 15", "Board 16", "Board 17", "Board 18", "Board 19", "Board 20"};
+
+enum menu_boards { BOARDS_SELECT, BOARDS_DELETE };
+
+uint32_t boards[21] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+char* conversionChart[20] = {"0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19"};
+
+int selectedBoardSlot = 0;
+
+// Main settings menu
+const byte subMenus = 21;
+const byte mainMenus = 5;
+
+byte subMenusCount[mainMenus] = {3, 2, 4, 2, 5};
 
 String MENUS[mainMenus][subMenus] = {
-    { "Info", "Debug", "", "", "", "", "" },
-    { "Remote", "Calibrate", "Pair", "Auto off", "", "", "" },
-    { "Board", "Update",  "Max Speed", "Range", "Cells", "Battery", "Motor" }
+    { "Info", "Odometer", "Telemetry", "Debug", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "" },
+    { "Remote", "Deselect", "Calibrate", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""},
+    { "Board", "Info",  "Update", "WiFi On", "WiFi Off", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "" },
+    { "Mode", "Normal",  "Push", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "" },
+    { "Profile", "Profile 1",  "Profile 2", "Profile 3", "Profile 4", "Profile 5", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "" }
   };
 
-enum menu_main { MENU_INFO, MENU_REMOTE, MENU_BOARD };
-enum menu_info { INFO_DEBUG };
-enum menu_remote { REMOTE_CALIBRATE, REMOTE_PAIR, REMOTE_SLEEP_TIMER };
-enum menu_board { BOARD_UPDATE };
+// TODO: Move Deselect to BOARD
+
+enum menu_main { MENU_INFO, MENU_REMOTE, MENU_BOARD, MENU_MODE, MENU_PROFILE };
+enum menu_info { INFO_ODOMETER, INFO_TELEMETRY, INFO_DEBUG };
+enum menu_remote { REMOTE_DISCONNECT, REMOTE_CALIBRATE };
+enum menu_board { BOARD_INFO, BOARD_UPDATE, BOARD_WIFI_ON, BOARD_WIFI_OFF };
+enum menu_mode { MODE_NORMAL, MODE_PUSH };
+enum menu_profile { PROFILE_1, PROFILE_2, PROFILE_3, PROFILE_4, PROFILE_5 };
 
 
 float currentMenu = 0;
+int startMenu = 0;
+int lowestMenu = 0;
 int subMenu = 0;
 int subMenuItem = 0;
 
@@ -280,3 +310,11 @@ bool triggerActive();
 bool triggerActiveSafe();
 void updateMainDisplay();
 void vibrate(int ms);
+void drawBoardsMenu();
+void loadBoards();
+void saveBoard(int board, uint32_t address);
+void deleteBoard(int board);
+void selectBoard(int board);
+void debug(String x);
+
+void SerializeInt32(char (&buf)[4], int32_t val);
