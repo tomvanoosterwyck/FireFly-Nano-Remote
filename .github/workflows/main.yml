@@ -16,4 +16,4 @@ jobs:
         python -m pip install --upgrade pip
         pip install platformio
     - name: Run PlatformIO
-      run: platformio run / -e Remote.Heltec.v2 -e Receiver.Heltec.v2
+      run: platformio run -e Remote.Heltec.v2 -e Receiver.Heltec.v2
